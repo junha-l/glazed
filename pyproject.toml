@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=77"]  # for the SPDX license field
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glazed"
+version = "0.1.0"
+description = "Studio-lit Blender Cycles renders of point clouds, meshes, and scenes mixing both."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Junha Lee", email = "junha.lee@postech.ac.kr" }]
+keywords = ["blender", "cycles", "rendering", "point-cloud", "mesh", "visualization"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Multimedia :: Graphics :: 3D Rendering",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+requires-python = ">=3.9"
+dependencies = [  # enough to write scenes (glazed.io) in any research environment
+    "numpy>=1.21",
+    "tomli>=1.1; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+render = [  # the bpy wheels for Blender 5.x need Python 3.13
+    "bpy>=5.0",
+    "matplotlib>=3.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/junha-l/glazed"
+Issues = "https://github.com/junha-l/glazed/issues"
+
+[project.scripts]
+glazed = "glazed.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+glazed = ["preview.html"]  # the --preview page

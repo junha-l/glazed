@@ -1,0 +1,12 @@
+{
+  "name": "glazed",
+  "description": "The glazed renderer's Claude Code plugin",
+  "owner": { "name": "Junha Lee" },
+  "plugins": [
+    {
+      "name": "glazed",
+      "source": "./",
+      "description": "Skills for rendering research outputs (point clouds, meshes, grasps) with the glazed renderer"
+    }
+  ]
+}
