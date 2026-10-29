@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>glazed preview</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --page: #ecebe8; --panel: #fbfbfa; --text: #1d1f22; --muted: #6b7078; --line: #dcdbd6;
+    --accent: #b4532a; --accent-text: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #151618; --panel: #1f2124; --text: #e6e6e3; --muted: #9a9ea5; --line: #33363a;
+      --accent: #e0895a; --accent-text: #1d1f22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: grid; grid-template-columns: 1fr 320px;
+    background: var(--page); color: var(--text); font: 13px/1.45 system-ui, sans-serif;
+  }
+  #stage { display: grid; place-items: center; overflow: hidden; min-height: 0; }
+  #stage > * { grid-area: 1 / 1; box-shadow: 0 1px 6px rgb(0 0 0 / 0.18); }
+  #cycles { cursor: pointer; }
+  .checker { background: repeating-conic-gradient(#c8c8c8 0 25%, #f2f2f2 0 50%) 0 0 / 16px 16px; }
+  aside {
+    overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line);
+    padding: 14px 16px 24px;
+  }
+  header { display: flex; align-items: baseline; gap: 6px; font-size: 15px; }
+  #status {
+    margin: 6px 0 0; min-height: 1.45em; max-height: 9em; overflow-y: auto;
+    color: var(--muted); white-space: pre-wrap; font-size: 12px;
+  }
+  h2 {
+    margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .row { display: grid; grid-template-columns: 88px 1fr 64px; gap: 8px; align-items: center; margin: 3px 0; }
+  .row > :only-of-type:not(span), .row > .wide { grid-column: 2 / 4; }
+  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  input[type=number], input:not([type]) {
+    width: 100%; padding: 2px 4px; font: inherit; color: inherit;
+    background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=color] { width: 100%; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
+  .buttons { display: flex; gap: 8px; margin-top: 14px; }
+  button {
+    flex: 1; padding: 6px 8px; font: inherit; color: inherit; cursor: pointer;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  pre {
+    margin: 0 0 8px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere;
+    font: 12px/1.4 ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px;
+  }
+  pre .option { white-space: nowrap; }  /* wrap between options, never inside "--azim 30" */
+  @media (max-width: 720px) {
+    body { height: auto; grid-template-columns: 1fr; grid-template-rows: 70vh auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+<script type="importmap">
+  {"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="stage">
+  <canvas></canvas>
+  <img id="cycles" alt="Cycles render" title="Click to return to the live view" hidden>
+</div>
+<aside>
+  <header><strong>glazed</strong> preview</header>
+  <p id="status">loading…</p>
+
+  <h2>Camera</h2>
+  <div id="camera"></div>
+  <label class="check"><input type="checkbox" id="fit"> fit the distance to the scene</label>
+
+  <h2>Lighting</h2>
+  <div id="lighting"></div>
+
+  <h2>Backdrop</h2>
+  <label class="row"><span>colour</span><input type="color" id="bg"></label>
+  <label class="check"><input type="checkbox" id="transparent"> transparent</label>
+
+  <section id="colormap" hidden>
+    <h2>Colormap</h2>
+    <label class="row"><span>names</span><input id="cmap" list="cmaps" class="wide"></label>
+    <label class="row"><span>min, max</span><input type="number" id="vmin" placeholder="data"><input type="number" id="vmax" placeholder="data"></label>
+    <datalist id="cmaps">
+      <option>viridis</option><option>plasma</option><option>inferno</option><option>magma</option>
+      <option>cividis</option><option>turbo</option><option>coolwarm</option><option>RdBu_r</option>
+      <option>Reds</option><option>Blues</option><option>Greys</option>
+    </datalist>
+  </section>
+
+  <h2>Image</h2>
+  <label class="row"><span>width, height</span><input type="number" id="width" min="16"><input type="number" id="height" min="16"></label>
+  <div class="buttons">
+    <button id="play">Play turntable</button>
+    <button id="render" class="primary">Render with Cycles</button>
+  </div>
+
+  <h2>Command</h2>
+  <pre id="command"></pre>
+  <button id="copy">Copy command</button>
+</aside>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+
+// The studio and camera of glazed/render: studio.py, camera.py, and scene.py.
+const KEY_POWER = 190, KEY_SIZE = 4, KEY_DISTANCE = 5, AMBIENT_STRENGTH = 0.15, FLOOR_SIZE = 20;
+const FLOOR_ALBEDO = 0.8;  // Cycles' default material: the shadow catcher still bounces light
+const SENSOR_WIDTH = 36, FIT_MARGIN = 1.08;
+// The key's shadow camera; nothing in a normalised scene comes nearer the key than 2.5.
+const KEY_ANGLE = 0.6, SHADOW_NEAR = 2.5, SHADOW_FAR = 15;
+const LOADERS = { ".ply": PLYLoader, ".stl": STLLoader, ".obj": OBJLoader,
+                  ".glb": GLTFLoader, ".gltf": GLTFLoader, ".fbx": FBXLoader };
+const Y_UP = new Set([".obj", ".glb", ".gltf", ".fbx"]);  // Blender's importers turn these Z-up
+const VIRIDIS = ["#440154", "#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962",
+                 "#addc30", "#fde725"];  // for when the server has no matplotlib
+const SLIDERS = {
+  camera: [["azim", "azimuth", -180, 180, 1], ["elev", "elevation", -89, 89, 1],
+           ["distance", "distance", 0.5, 12, 0.05], ["lens", "lens, mm", 12, 200, 1]],
+  lighting: [["exposure", "exposure", -3, 3, 0.1], ["key", "key", 0, 3, 0.05],
+             ["ambient", "ambient", 0, 3, 0.05], ["key_azim", "key azimuth", -180, 180, 1],
+             ["key_elev", "key elevation", 0, 90, 1]],
+};
+const Z = new THREE.Vector3(0, 0, 1);
+
+const $ = (selector) => document.querySelector(selector);
+const rad = THREE.MathUtils.degToRad, deg = THREE.MathUtils.radToDeg;
+const round = (x, digits) => +x.toFixed(digits);
+const status = (text) => { $("#status").textContent = text; };
+const post = (route) => fetch(route, { method: "POST", body: JSON.stringify(opts) });
+
+const setup = await (await fetch("scene.json")).json();
+const opts = setup.options;  // named like the command-line options, e.g. key_azim for --key-azim
+let background = new THREE.Color(setup.bgHex);
+
+const canvas = $("canvas");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.toneMapping = THREE.LinearToneMapping;  // Blender's Standard view: exposure, then clip
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const root = new THREE.Group();
+const camera = new THREE.PerspectiveCamera(40, 4 / 3, 0.01, 100);
+camera.up.copy(Z);
+const fill = new THREE.HemisphereLight();  // the white world above, the lit floor below
+fill.position.copy(Z);
+const key = new THREE.SpotLight(0xffffff, 0, 0, KEY_ANGLE, 0, 2);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = SHADOW_NEAR;
+key.shadow.camera.far = SHADOW_FAR;
+key.shadow.bias = -0.0005;
+scene.add(root, fill, key, key.target);
+
+// The floor's shadow softens with distance from what casts it, as under the large
+// key: percentage-closer soft shadows, from three.js's webgl_shadowmap_pcss example,
+// adapted to the spot light's perspective depth.
+const glsl = (x) => x.toFixed(5);
+const PCSS = `
+#define NUM_SAMPLES 32
+#define NUM_RINGS 11
+vec2 poissonDisk[ NUM_SAMPLES ];
+void initPoissonSamples() {  // a spiral, turned per pixel by interleaved gradient noise
+  float angleStep = PI2 * float( NUM_RINGS ) / float( NUM_SAMPLES );
+  float angle = PI2 * fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+  float radius = 1.0 / float( NUM_SAMPLES );
+  for ( int i = 0; i < NUM_SAMPLES; i ++ ) {
+    poissonDisk[ i ] = vec2( cos( angle ), sin( angle ) ) * pow( radius, 0.75 );
+    radius += 1.0 / float( NUM_SAMPLES );
+    angle += angleStep;
+  }
+}
+float lightDistance( const in float depth ) {
+  return - perspectiveDepthToViewZ( depth, ${glsl(SHADOW_NEAR)}, ${glsl(SHADOW_FAR)} );
+}
+// The key's half-size projected through a blocker onto the receiver, in shadow-map units
+float penumbra( const in float receiver, const in float blocker ) {
+  return ${glsl(KEY_SIZE / 2)} * ( receiver - blocker ) / ( receiver * blocker * ${glsl(2 * Math.tan(KEY_ANGLE))} );
+}
+float PCSS( sampler2D shadowMap, vec4 coords ) {
+  initPoissonSamples();
+  float receiver = lightDistance( coords.z );
+  float searchRadius = penumbra( receiver, ${glsl(SHADOW_NEAR)} );
+  float blockerSum = 0.0, blockers = 0.0;
+  for ( int i = 0; i < NUM_SAMPLES; i ++ ) {
+    float depth = unpackRGBAToDepth( texture2D( shadowMap, coords.xy + poissonDisk[ i ] * searchRadius ) );
+    if ( depth < coords.z ) {  // weighted to fade out at the rim, so edges don't streak
+      float weight = 1.0 - length( poissonDisk[ i ] );
+      blockerSum += weight * lightDistance( depth );
+      blockers += weight;
+    }
+  }
+  if ( blockers < 1e-4 ) return 1.0;
+  float radius = penumbra( receiver, blockerSum / blockers );
+  float lit = 0.0;
+  for ( int i = 0; i < NUM_SAMPLES; i ++ ) {
+    lit += step( coords.z, unpackRGBAToDepth( texture2D( shadowMap, coords.xy + poissonDisk[ i ] * radius ) ) );
+    lit += step( coords.z, unpackRGBAToDepth( texture2D( shadowMap, coords.xy - poissonDisk[ i ].yx * radius ) ) );
+  }
+  return lit / float( 2 * NUM_SAMPLES );
+}
+`;
+function softShadows(shader) {
+  const chunk = THREE.ShaderChunk.shadowmap_pars_fragment
+    .replace("#ifdef USE_SHADOWMAP", `#ifdef USE_SHADOWMAP\n${PCSS}`)
+    .replace("#if defined( SHADOWMAP_TYPE_PCF )",
+             "return PCSS( shadowMap, shadowCoord );\n#if defined( SHADOWMAP_TYPE_PCF )");
+  shader.fragmentShader = shader.fragmentShader.replace("#include <shadowmap_pars_fragment>", chunk);
+}
+
+const assets = [];
+try {
+  for (const o of setup.objects) {
+    status(`loading ${o.name}`);
+    const anchor = new THREE.Group();  // the entry's transform, like Asset.anchor
+    anchor.position.fromArray(o.location);
+    anchor.rotation.set(...o.rotation.map(rad), "ZYX");  // Blender's XYZ Euler
+    anchor.scale.setScalar(o.scale);
+    const asset = o.columns ? await pointCloud(o) : await meshFile(o);
+    anchor.add(asset.object);
+    root.add(anchor);
+    assets.push(asset);
+  }
+} catch (err) {
+  status(`could not load the scene: ${err}`);
+  throw err;
+}
+
+// Normalise like scene.build_scene: centre the bounding box, largest half-side 1.
+root.updateMatrixWorld(true);
+const world = [], point = new THREE.Vector3();
+for (const { positions, object } of assets.flatMap((asset) => asset.sources)) {
+  for (let i = 0; i < positions.count; i++) {
+    world.push(...point.fromBufferAttribute(positions, i).applyMatrix4(object.matrixWorld).toArray());
+  }
+}
+const box = new THREE.Box3().setFromArray(world);
+const center = box.getCenter(new THREE.Vector3());
+const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+const scale = 1 / Math.max(half.x, half.y, half.z);
+root.scale.setScalar(scale);
+root.position.copy(center).multiplyScalar(-scale);
+const floorZ = -half.z * scale;
+const focus = new THREE.Vector3(0, 0, floorZ + 0.5);
+let reach = 0;
+for (let i = 0; i < world.length; i += 3) {
+  reach = Math.max(reach, point.fromArray(world, i).sub(center).multiplyScalar(scale).distanceTo(focus));
+}
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE),
+                             new THREE.ShadowMaterial());
+floor.material.onBeforeCompile = softShadows;
+floor.position.z = floorZ;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const valued = assets.filter((asset) => asset.values);
+const dataRange = valued.length
+  ? [Math.min(...valued.map((a) => a.values.reduce((m, v) => Math.min(m, v), Infinity))),
+     Math.max(...valued.map((a) => a.values.reduce((m, v) => Math.max(m, v), -Infinity)))]
+  : [0, 1];
+
+async function pointCloud(o) {
+  const data = new Float32Array(await (await fetch(o.url)).arrayBuffer());
+  const columns = o.columns, n = data.length / columns;
+  const column = (j) => Float32Array.from({ length: n }, (_, i) => data[i * columns + j]);
+  const xyz = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) xyz.set(data.subarray(i * columns, i * columns + 3), i * 3);
+
+  const sphere = new THREE.IcosahedronGeometry(1, n > 200000 ? 0 : 1);
+  const mesh = new THREE.InstancedMesh(sphere, new THREE.MeshLambertMaterial(), n);
+  const matrix = new THREE.Matrix4();
+  for (let i = 0; i < n; i++) {
+    matrix.makeScale(o.radius, o.radius, o.radius).setPosition(xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2]);
+    mesh.setMatrixAt(i, matrix);
+  }
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+
+  const values = columns === 4 ? column(3) : null;
+  const rgb = columns === 6 ? [3, 4, 5].map(column) : null;
+  const rgbScale = rgb && rgb.some((c) => c.some((v) => v > 1)) ? 1 / 255 : 1;
+  const solid = new THREE.Color(o.color), color = new THREE.Color();
+  return {
+    object: mesh, values,
+    sources: [{ positions: new THREE.BufferAttribute(xyz, 3), object: mesh }],
+    paint(table, vmin, vmax) {  // like PointCloud.paint, with matplotlib's 256-entry lookup
+      for (let i = 0; i < n; i++) {
+        if (values) {
+          const t = (values[i] - vmin) / Math.max(vmax - vmin, 1e-12);
+          color.setRGB(...table[Math.min(255, Math.max(0, Math.floor(t * 256)))], THREE.SRGBColorSpace);
+        } else if (rgb) {
+          color.setRGB(rgb[0][i] * rgbScale, rgb[1][i] * rgbScale, rgb[2][i] * rgbScale,
+                       THREE.SRGBColorSpace);
+        } else {
+          color.copy(solid);
+        }
+        mesh.setColorAt(i, color);
+      }
+      mesh.instanceColor.needsUpdate = true;
+    },
+  };
+}
+
+async function meshFile(o) {
+  const loaded = await new LOADERS[o.suffix]().loadAsync(o.url);
+  const object = loaded.isBufferGeometry ? new THREE.Mesh(loaded) : loaded.scene ?? loaded;
+  const dropped = [], parts = [];
+  object.traverse((child) => {
+    if (child.isLight || child.isCamera) dropped.push(child);
+    else if (child.isMesh) parts.push(child);
+  });
+  dropped.forEach((child) => child.removeFromParent());
+  for (const part of parts) {
+    if (o.smooth) part.geometry = smoothed(part.geometry);
+    if (o.color !== "original") {
+      part.material = new THREE.MeshLambertMaterial({ color: o.color, side: THREE.DoubleSide,
+                                                      flatShading: !o.smooth });
+    } else if (loaded.isBufferGeometry) {
+      part.material = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide,
+                                                      vertexColors: "color" in part.geometry.attributes });
+    }
+    part.castShadow = part.receiveShadow = true;
+  }
+  const upright = new THREE.Group();
+  upright.add(object);
+  if (Y_UP.has(o.suffix)) upright.rotation.x = Math.PI / 2;
+  return {
+    object: upright, values: null, paint() {},
+    sources: parts.map((part) => ({ positions: part.geometry.attributes.position, object: part })),
+  };
+}
+
+function smoothed(geometry) {
+  if (!geometry.index) {
+    geometry.deleteAttribute("normal");
+    geometry = mergeVertices(geometry);
+  }
+  if (!geometry.attributes.normal) geometry.computeVertexNormals();
+  return geometry;
+}
+
+const hexRGB = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+const viridis = Array.from({ length: 256 }, (_, i) => {
+  const t = (i / 255) * (VIRIDIS.length - 1), j = Math.min(Math.floor(t), VIRIDIS.length - 2);
+  const [a, b] = [hexRGB(VIRIDIS[j]), hexRGB(VIRIDIS[j + 1])];
+  return a.map((x, k) => x + (b[k] - x) * (t - j));
+});
+const tables = {};
+
+async function paint() {
+  let table = null;
+  if (valued.length) {
+    const name = opts.cmap[0];
+    if (!(name in tables)) {
+      const response = await fetch(`colormap/${encodeURIComponent(name)}`);
+      tables[name] = response.ok ? await response.json() : null;
+    }
+    table = tables[name] ?? viridis;
+    if (!tables[name]) status(`no colormap "${name}" (or no matplotlib) here; showing viridis`);
+  }
+  assets.forEach((asset) => asset.paint(table, opts.vmin ?? dataRange[0], opts.vmax ?? dataRange[1]));
+  requestRender();
+}
+
+function spherical(radius, azim, elev) {
+  const a = rad(azim), e = rad(elev);
+  return new THREE.Vector3(radius * Math.cos(e) * Math.cos(a), radius * Math.cos(e) * Math.sin(a),
+                           radius * Math.sin(e));
+}
+
+function distance() {  // camera.fit_distance unless set
+  if (opts.distance != null) return opts.distance;
+  const [w, h] = opts.res;
+  const halfFov = Math.atan(SENSOR_WIDTH / 2 / opts.lens * Math.min(w, h) / Math.max(w, h));
+  return FIT_MARGIN * reach / Math.sin(halfFov);
+}
+
+const controls = new OrbitControls(camera, canvas);
+controls.enablePan = false;
+controls.target.copy(focus);
+let syncing = false;
+controls.addEventListener("change", () => {
+  if (!syncing) fromCamera();
+  requestRender();
+});
+
+function placeCamera() {
+  const [w, h] = opts.res;
+  camera.aspect = w / h;
+  camera.fov = 2 * deg(Math.atan(SENSOR_WIDTH / 2 / opts.lens * h / Math.max(w, h)));
+  camera.updateProjectionMatrix();
+  camera.position.copy(focus).add(spherical(distance(), opts.azim, opts.elev));
+  camera.lookAt(focus);
+  syncing = true;
+  controls.update();
+  syncing = false;
+  requestRender();
+}
+
+function fromCamera() {
+  const offset = camera.position.clone().sub(focus), d = offset.length();
+  opts.azim = round(deg(Math.atan2(offset.y, offset.x)), 1);
+  opts.elev = round(deg(Math.asin(offset.z / d)), 1);
+  if (Math.abs(d - distance()) > 1e-4) opts.distance = round(d, 2);
+  refreshInputs();
+  updateCommand();
+}
+
+function placeLights() {
+  // camera.aim: the rig turns with the camera, so the key keeps its angle to the view
+  const spin = Math.atan2(camera.position.y - focus.y, camera.position.x - focus.x);
+  key.position.copy(spherical(KEY_DISTANCE, opts.key_azim, opts.key_elev)).applyAxisAngle(Z, spin);
+  key.position.z += floorZ;
+  key.target.position.set(0, 0, floorZ + 0.4);
+  key.target.updateMatrixWorld();
+  key.intensity = KEY_POWER * opts.key / Math.PI;  // the area light's on-axis intensity
+
+  // Fill as irradiance: from the uniform white world above and the floor below,
+  // whose radiance comes from the key and the world. The shadow's strength is the
+  // key's share of the floor's light, as the shadow catcher measures it.
+  const sky = AMBIENT_STRENGTH * opts.ambient;
+  const keyOnFloor = key.intensity / KEY_DISTANCE ** 2 * Math.sin(rad(opts.key_elev));
+  fill.color.setScalar(Math.PI * sky);
+  fill.groundColor.setScalar(Math.PI * FLOOR_ALBEDO * (keyOnFloor / Math.PI + sky));
+  floor.material.opacity = keyOnFloor / Math.max(keyOnFloor + Math.PI * sky, 1e-6);
+  renderer.toneMappingExposure = 2 ** opts.exposure;
+  renderer.setClearColor(background, opts.transparent ? 0 : 1);
+}
+
+let queued = false, playing = null;
+function requestRender() {
+  if (!queued) {
+    queued = true;
+    requestAnimationFrame(frame);
+  }
+}
+function frame(now) {
+  queued = false;
+  if (playing !== null) {  // camera.orbit_poses at the video's speed
+    const t = (((now - playing) / 1000) * setup.animation.fps / setup.animation.frames) % 1;
+    const { turns, elev_amp, dolly } = setup.animation;
+    camera.position.copy(focus).add(spherical(distance() * (1 - dolly * t), opts.azim + 360 * turns * t,
+                                              opts.elev + elev_amp * Math.sin(2 * Math.PI * t)));
+    camera.lookAt(focus);
+    requestRender();
+  }
+  placeLights();
+  renderer.render(scene, camera);
+}
+
+function fitCanvas() {
+  const [w, h] = opts.res, stage = $("#stage").getBoundingClientRect();
+  const s = Math.min((stage.width - 32) / w, (stage.height - 32) / h);
+  const width = Math.max(1, Math.floor(w * s)), height = Math.max(1, Math.floor(h * s));
+  renderer.setPixelRatio(Math.max(window.devicePixelRatio, 2));  // supersampled: smooths the soft shadows
+  renderer.setSize(width, height);
+  Object.assign($("#cycles").style, { width: `${width}px`, height: `${height}px` });
+  placeCamera();
+}
+
+const refreshers = [];
+function refreshInputs() {
+  refreshers.forEach((refresh) => refresh());
+  $("#fit").checked = opts.distance == null;
+  $("#transparent").checked = opts.transparent;
+  canvas.classList.toggle("checker", opts.transparent);
+  $("#cycles").classList.toggle("checker", opts.transparent);
+  $("#cmap").value = opts.cmap.join(" ");
+  $("#vmin").value = opts.vmin ?? "";
+  $("#vmax").value = opts.vmax ?? "";
+  [$("#width").value, $("#height").value] = opts.res;
+}
+
+function changed(name) {
+  if (name === "res") fitCanvas();
+  else if (["azim", "elev", "distance", "lens"].includes(name)) placeCamera();
+  if (["cmap", "vmin", "vmax"].includes(name)) paint();
+  refreshInputs();
+  requestRender();
+  updateCommand();
+}
+
+let command = "", commandTimer;
+function updateCommand() {
+  clearTimeout(commandTimer);
+  commandTimer = setTimeout(async () => {
+    command = (await (await post("command")).json()).command;
+    const [inputs, ...options] = command.split(/ (?=--)/);
+    $("#command").replaceChildren(inputs, ...options.flatMap((option) => [
+      " ", Object.assign(document.createElement("span"), { className: "option", textContent: option }),
+    ]));
+  }, 120);
+}
+
+for (const [group, sliders] of Object.entries(SLIDERS)) {
+  for (const [name, label, min, max, step] of sliders) {
+    const row = Object.assign(document.createElement("label"), { className: "row" });
+    const range = Object.assign(document.createElement("input"), { type: "range", min, max, step });
+    const number = Object.assign(document.createElement("input"), { type: "number", step });
+    const digits = (String(step).split(".")[1] ?? "").length;
+    const set = (value) => {
+      opts[name] = round(+value, digits);
+      changed(name);
+    };
+    range.oninput = () => set(range.value);
+    number.onchange = () => set(number.value);
+    refreshers.push(() => {
+      const value = name === "distance" ? distance() : opts[name];
+      range.value = value;
+      if (document.activeElement !== number) number.value = round(value, Math.max(digits, 1));
+    });
+    row.append(Object.assign(document.createElement("span"), { textContent: label }), range, number);
+    $(`#${group}`).append(row);
+  }
+}
+
+$("#fit").onchange = (e) => {
+  opts.distance = e.target.checked ? null : round(distance(), 2);
+  changed("distance");
+};
+$("#bg").value = /^#[0-9a-f]{6}$/i.test(setup.bgHex) ? setup.bgHex : "#ffffff";
+$("#bg").oninput = (e) => {
+  opts.bg = e.target.value;
+  background = new THREE.Color(opts.bg);
+  changed("bg");
+};
+$("#transparent").onchange = (e) => {
+  opts.transparent = e.target.checked;
+  changed("transparent");
+};
+$("#colormap").hidden = !valued.length;
+$("#cmap").onchange = (e) => {
+  const names = e.target.value.trim().split(/\s+/).filter(Boolean);
+  opts.cmap = names.length ? names : ["viridis"];
+  changed("cmap");
+};
+for (const name of ["vmin", "vmax"]) {
+  $(`#${name}`).onchange = (e) => {
+    opts[name] = e.target.value === "" ? null : +e.target.value;
+    changed(name);
+  };
+}
+for (const [i, name] of ["width", "height"].entries()) {
+  $(`#${name}`).onchange = (e) => {
+    opts.res = opts.res.map((v, j) => (j === i ? Math.max(16, Math.round(+e.target.value)) : v));
+    changed("res");
+  };
+}
+
+$("#play").onclick = () => {
+  playing = playing === null ? performance.now() : null;
+  controls.enabled = playing === null;
+  $("#play").textContent = playing === null ? "Play turntable" : "Stop";
+  if (playing === null) placeCamera();
+  else requestRender();
+};
+
+$("#render").disabled = !setup.canRender;
+if (!setup.canRender) {
+  $("#render").title = "Needs bpy: start the preview from the render environment "
+                     + "(pip install \"glazed[render]\")";
+}
+$("#render").onclick = async () => {
+  $("#render").disabled = true;
+  status("rendering with Cycles…");
+  const response = await post("render");
+  if (response.ok) {
+    $("#cycles").src = URL.createObjectURL(await response.blob());
+    $("#cycles").hidden = false;
+    status("Cycles render at preview quality. Click it to return to the live view.");
+  } else {
+    status(`render failed:\n${await response.text()}`);
+  }
+  $("#render").disabled = false;
+};
+$("#cycles").onclick = () => {
+  $("#cycles").hidden = true;
+  status("");
+};
+$("#copy").onclick = async () => {
+  await navigator.clipboard.writeText(command);
+  status("command copied");
+};
+
+status("drag to orbit, scroll to zoom");
+refreshInputs();
+await paint();
+new ResizeObserver(fitCanvas).observe($("#stage"));
+updateCommand();
+</script>
+</body>
+</html>

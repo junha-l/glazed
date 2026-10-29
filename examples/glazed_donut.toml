@@ -1,0 +1,13 @@
+# A glazed donut: dough and glaze meshes, sprinkles as an RGB point cloud.
+
+[[objects]]
+path = "donut.ply"
+color = "#d9a066"
+
+[[objects]]
+path = "glaze.ply"
+color = "#f4a6c6"
+
+[[objects]]
+path = "sprinkles.npy"
+radius = 0.0009
