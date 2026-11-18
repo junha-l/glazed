@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from pathlib import Path
 
@@ -148,6 +149,9 @@ def main(argv=None) -> None:
         sys.exit(f"glazed: rendering needs Blender's bpy ({err}).\n"
                  "Install it in a Python 3.13 environment: pip install 'glazed[render]'")
 
+    # Cycles renders in C++, out of KeyboardInterrupt's reach, so Ctrl+C would only land
+    # once the frame is done (see output.reraise_interrupt). End the process at once.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     render(
         specs, args.out or str(Path("outs") / Path(args.inputs[0]).stem), args.mode,
         settings=RenderSettings(resolution=tuple(args.res), supersample=args.supersample,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 
 import bpy
@@ -85,8 +86,27 @@ class Shot:
 
     def render(self, path: str) -> None:
         bpy.context.scene.render.filepath = path
+        before = getattr(sys, "last_exc", None)
         bpy.ops.render.render(write_still=True)
         finish(path, self.supersample, self.background)
+        reraise_interrupt(before)
+
+
+def reraise_interrupt(before: BaseException | None) -> None:
+    """Raise a KeyboardInterrupt that Blender caught during the last render.
+
+    Python only raises KeyboardInterrupt once Cycles' C++ render returns, inside the
+    engine's Python render callback. Blender prints it there, keeps it in sys.last_exc,
+    and carries on, so without this Ctrl+C never stops a render. `before` is
+    sys.last_exc from before the render, so an older interrupt isn't raised again.
+    """
+    caught = getattr(sys, "last_exc", None)
+    if caught is before or not isinstance(caught, KeyboardInterrupt):
+        return
+    # Its traceback holds Cycles' engine, which would otherwise outlive Blender and
+    # error at exit.
+    sys.last_exc = sys.last_type = sys.last_value = sys.last_traceback = None
+    raise KeyboardInterrupt
 
 
 def finish(path: str, factor: int, background) -> None:
