@@ -119,11 +119,13 @@ glazed examples/glazed_donut.toml --preview
 ```
 
 This opens the scene in the browser, framed and lit like the render. Drag to
-orbit, scroll to zoom, and adjust the lighting, backdrop, colormap, and image size
-in the panel, which shows the matching `glazed` command to copy, including the
-other options you passed. **Render with Cycles** renders the current view at
-preview quality to check the real look, and **Play turntable** plays a video's
-orbit at its real speed.
+orbit, scroll to zoom, and adjust the view, lighting, backdrop, colormap, and image
+size in the panel; drag a setting's name to change it, and double-click the name
+to reset it. The bar under the image shows the matching `glazed` command to copy,
+including the other options you passed. **Render** (or R) renders the current view
+with Cycles at preview quality to check the real look; **Split** then compares it
+with the live preview side by side. **Turntable** plays a video's orbit at its
+real speed.
 
 | Live preview | Cycles render of the copied command |
 |:---:|:---:|
@@ -208,10 +210,9 @@ A USD file with animation, such as a simulation replay, plays in video modes: on
 video frame per frame of the file, so the file sets the length instead of
 `--frames`. `--every 2` renders every 2nd frame. A 60 fps file then plays in real
 time at the default `--fps 30`. The floor and framing cover the whole animation.
-A still renders the first frame. In the preview, **Play** (or the space bar) plays
-the animation while you orbit, and **Play turntable** plays it along the camera's
-path, as the video will. Both play at the speed slider's frames per second, which
-sets `--fps`.
+A still renders the first frame. In the preview, the play button (or the space bar)
+plays the animation while you orbit, and **Turntable** plays it along the camera's
+path, as the video will. Both play at the **fps** beside them, which sets `--fps`.
 
 ```bash
 glazed replay.usd --mode mp4 --every 2 --turns 0 --best-view --color original \

@@ -5,64 +5,382 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>glazed preview</title>
 <style>
+  /* Bisque and glaze: a matte, quiet interface, and one glossy celadon glaze on what
+     matters (the render button, active states, slider fills, the mark). */
   :root {
-    color-scheme: light dark;
-    --page: #ecebe8; --panel: #fbfbfa; --text: #1d1f22; --muted: #6b7078; --line: #dcdbd6;
-    --accent: #b4532a; --accent-text: #fff;
+    color-scheme: light;
+    --stage: #ebe8e3;
+    --surface: #faf9f7;
+    --raised: #ffffff;
+    --field: rgb(31 30 28 / 0.05);
+    --field-hover: rgb(31 30 28 / 0.08);
+    --ink: #1f1e1c;
+    --ink-2: #625e58;
+    --ink-3: #98938b;
+    --line: rgb(31 30 28 / 0.09);
+    --line-strong: rgb(31 30 28 / 0.16);
+    --track: rgb(31 30 28 / 0.13);
+    --thumb: #ffffff;
+    --glaze: #5e8c7b;
+    --glaze-hi: #78a593;
+    --glaze-lo: #4e7a6a;
+    --glaze-ink: #ffffff;
+    --glaze-soft: rgb(94 140 123 / 0.15);
+    --toast: #262523;
+    --toast-ink: #f5f3ef;
+    --danger: #b4483c;
+    --frame-shadow: 0 0 0 1px rgb(31 30 28 / 0.06), 0 2px 4px rgb(31 30 28 / 0.04),
+                    0 16px 40px -12px rgb(31 30 28 / 0.22);
+    --pop-shadow: 0 0 0 1px var(--line), 0 10px 30px -8px rgb(31 30 28 / 0.22);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --page: #151618; --panel: #1f2124; --text: #e6e6e3; --muted: #9a9ea5; --line: #33363a;
-      --accent: #e0895a; --accent-text: #1d1f22;
+      color-scheme: dark;
+      --stage: #0f1011;
+      --surface: #18191a;
+      --raised: #222325;
+      --field: rgb(255 255 255 / 0.055);
+      --field-hover: rgb(255 255 255 / 0.085);
+      --ink: #ecebe7;
+      --ink-2: #a3a09a;
+      --ink-3: #6f6c67;
+      --line: rgb(255 255 255 / 0.07);
+      --line-strong: rgb(255 255 255 / 0.13);
+      --track: rgb(255 255 255 / 0.15);
+      --thumb: #f2f1ee;
+      --glaze: #7fb09d;
+      --glaze-hi: #93c3b1;
+      --glaze-lo: #5f9480;
+      --glaze-ink: #0c1813;
+      --glaze-soft: rgb(127 176 157 / 0.17);
+      --toast: #ecebe7;
+      --toast-ink: #18191a;
+      --danger: #e5806f;
+      --frame-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 16px 40px -12px rgb(0 0 0 / 0.7);
+      --pop-shadow: 0 0 0 1px var(--line-strong), 0 12px 32px -8px rgb(0 0 0 / 0.65);
     }
   }
+
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; height: 100vh; display: grid; grid-template-columns: 1fr 320px;
-    background: var(--page); color: var(--text); font: 13px/1.45 system-ui, sans-serif;
+    margin: 0; overflow: hidden; display: grid;
+    grid-template: "top top" 48px "stage inspector" minmax(0, 1fr) / minmax(0, 1fr) 320px;
+    background: var(--stage); color: var(--ink);
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  #stage { display: grid; place-items: center; overflow: hidden; min-height: 0; }
-  #stage > * { grid-area: 1 / 1; box-shadow: 0 1px 6px rgb(0 0 0 / 0.18); }
-  #cycles { cursor: pointer; }
-  .checker { background: repeating-conic-gradient(#c8c8c8 0 25%, #f2f2f2 0 50%) 0 0 / 16px 16px; }
-  aside {
-    overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line);
-    padding: 14px 16px 24px;
+  body.scrubbing, body.scrubbing * { cursor: ew-resize !important; user-select: none; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: 0; padding: 0; background: none; }
+  button:disabled { cursor: not-allowed; opacity: 0.4; }
+  :focus-visible { outline: 2px solid var(--glaze); outline-offset: 1px; }
+  svg { display: block; flex: none; }
+  .icon {
+    width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5;
+    stroke-linecap: round; stroke-linejoin: round;
   }
-  header { display: flex; align-items: baseline; gap: 6px; font-size: 15px; }
-  #status {
-    margin: 6px 0 0; min-height: 1.45em; max-height: 9em; overflow-y: auto;
-    color: var(--muted); white-space: pre-wrap; font-size: 12px;
+  kbd {
+    padding: 0 4px; border-radius: 4px; font: 500 10.5px/16px var(--mono);
+    background: var(--field); color: var(--ink-2);
   }
-  h2 {
-    margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--muted);
+
+  /* Top bar */
+  .topbar {
+    grid-area: top; display: flex; align-items: center; gap: 12px; min-width: 0;
+    padding: 0 10px 0 16px; background: var(--surface); border-bottom: 1px solid var(--line);
   }
-  .row { display: grid; grid-template-columns: 88px 1fr 64px; gap: 8px; align-items: center; margin: 3px 0; }
-  .row > :only-of-type:not(span, button), .row > .wide { grid-column: 2 / 4; }
-  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
-  input[type=number], input:not([type]) {
-    width: 100%; padding: 2px 4px; font: inherit; color: inherit;
-    background: transparent; border: 1px solid var(--line); border-radius: 4px;
+  .brand { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; letter-spacing: -0.015em; }
+  .crumb { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); }
+  .crumb .slash { color: var(--ink-3); font-size: 15px; font-weight: 300; }
+  #title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 500; }
+  .chip {
+    padding: 1px 6px; border-radius: 5px; white-space: nowrap; font-variant-numeric: tabular-nums;
+    background: var(--field); color: var(--ink-2);
   }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  input[type=color] { width: 100%; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
-  .buttons { display: flex; gap: 8px; margin-top: 14px; }
-  button {
-    flex: 1; padding: 6px 8px; font: inherit; color: inherit; cursor: pointer;
-    background: transparent; border: 1px solid var(--line); border-radius: 6px;
+  .spacer { flex: 1; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px;
+    padding: 0 10px; border-radius: 7px; white-space: nowrap; color: var(--ink);
+    background: var(--field); transition: background 0.12s, color 0.12s;
   }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-  button:disabled { opacity: 0.45; cursor: not-allowed; }
-  .row:has(:disabled) > span { opacity: 0.45; }
-  pre {
-    margin: 0 0 8px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere;
-    font: 12px/1.4 ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px;
+  .btn:hover:not(:disabled) { background: var(--field-hover); }
+  .btn.ghost { background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+  .btn[aria-pressed=true], .btn.done { color: var(--glaze); background: var(--glaze-soft); }
+  .btn.square { width: 28px; padding: 0; }
+
+  .segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--field); }
+  .segmented button {
+    height: 24px; padding: 0 11px; border-radius: 6px; font-weight: 500; color: var(--ink-2);
+    transition: background 0.12s, color 0.12s;
   }
-  pre .option { white-space: nowrap; }  /* wrap between options, never inside "--azim 30" */
-  @media (max-width: 720px) {
-    body { height: auto; grid-template-columns: 1fr; grid-template-rows: 70vh auto; }
-    aside { border-left: 0; border-top: 1px solid var(--line); }
+  .segmented button:hover:not(:disabled) { color: var(--ink); }
+  .segmented button[aria-pressed=true] {
+    color: var(--ink); background: var(--raised);
+    box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.08);
+  }
+  .segmented button:disabled { opacity: 0.35; }
+
+  .glaze-btn {  /* the one glossy thing: celadon glaze over a matte interface */
+    position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 12px 0 11px; border-radius: 8px; font-weight: 600;
+    color: var(--glaze-ink); background: linear-gradient(180deg, var(--glaze-hi), var(--glaze-lo));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -1px 0 rgb(0 0 0 / 0.1),
+                0 1px 2px rgb(0 0 0 / 0.12), 0 6px 14px -6px var(--glaze);
+    transition: filter 0.12s;
+  }
+  .glaze-btn:hover:not(:disabled) { filter: brightness(1.06); }
+  .glaze-btn:active:not(:disabled) { filter: brightness(0.97); }
+  .glaze-btn kbd { background: rgb(255 255 255 / 0.2); color: inherit; opacity: 0.85; }
+  .glaze-btn::after {  /* a sheen that sweeps across while Cycles fires */
+    content: ""; position: absolute; inset: 0; transform: translateX(-130%); pointer-events: none;
+    background: linear-gradient(100deg, transparent 25%, rgb(255 255 255 / 0.5) 50%, transparent 75%);
+  }
+  .glaze-btn.firing { cursor: progress; opacity: 1; font-variant-numeric: tabular-nums; }
+  .glaze-btn.firing::after { animation: sheen 1.5s ease-in-out infinite; }
+  @keyframes sheen { to { transform: translateX(130%); } }
+
+  /* Stage: the viewport, then the console */
+  #stage { grid-area: stage; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+  #viewport { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; }
+  #frame {
+    position: relative; display: grid; overflow: hidden; border-radius: 2px;
+    box-shadow: var(--frame-shadow); --split: 50%;
+  }
+  #frame > canvas, #frame > img { grid-area: 1 / 1; display: block; width: 100%; height: 100%; }
+  .checker { background: repeating-conic-gradient(#cfccc7 0 25%, #f3f2ef 0 50%) 0 0 / 16px 16px; }
+  #frame[data-mode=live] > img, #frame[data-mode=live] > .divider { display: none; }
+  #frame[data-mode=split] { cursor: ew-resize; }
+  #frame[data-mode=split] > img { clip-path: inset(0 0 0 var(--split)); }
+  .divider { position: absolute; top: 0; bottom: 0; left: var(--split); display: none; pointer-events: none; }
+  #frame[data-mode=split] > .divider { display: block; }
+  .divider::before {
+    content: ""; position: absolute; top: 0; bottom: 0; left: -0.75px; width: 1.5px;
+    background: rgb(255 255 255 / 0.95); box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.18), 0 0 8px rgb(0 0 0 / 0.15);
+  }
+  .divider .handle {
+    position: absolute; top: 50%; left: -15px; width: 30px; height: 30px; margin-top: -15px;
+    display: grid; place-items: center; border-radius: 50%; color: #4a4744;
+    background: #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.2);
+  }
+  .tag {
+    position: absolute; top: 10px; display: none; padding: 2px 7px; border-radius: 5px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.01em; pointer-events: none;
+    color: #fff; background: rgb(24 24 24 / 0.5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .tag.live { left: 10px; }
+  .tag.cycles { right: 10px; }
+  #frame[data-mode=split] > .tag, #frame[data-mode=cycles] > .tag.cycles { display: block; }
+  .stale {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: none;
+    align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border-radius: 5px; white-space: nowrap;
+    font-size: 11px;
+    font-weight: 500; color: #fff; background: rgb(24 24 24 / 0.6);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); pointer-events: none;
+  }
+  .stale kbd { background: rgb(255 255 255 / 0.18); color: #fff; }
+  #frame.outdated:not([data-mode=live]) > .stale { display: flex; }
+
+  .hint {
+    position: absolute; top: 14px; left: 16px; color: var(--ink-3); font-size: 11.5px;
+    pointer-events: none; transition: opacity 0.6s;
+  }
+  .hint.gone { opacity: 0; }
+
+  #loader {
+    position: absolute; inset: 0; z-index: 5; display: grid; place-content: center; justify-items: center;
+    gap: 12px; color: var(--ink-2); background: var(--stage); transition: opacity 0.35s;
+  }
+  #loader.done { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--track);
+    border-top-color: var(--glaze); animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #toasts {
+    position: absolute; left: 50%; bottom: 14px; z-index: 6; transform: translateX(-50%);
+    display: grid; justify-items: center; gap: 6px; pointer-events: none;
+  }
+  .toast {
+    max-width: min(560px, 80vw); padding: 7px 12px; border-radius: 8px; font-weight: 500;
+    color: var(--toast-ink); background: var(--toast); box-shadow: 0 8px 24px -6px rgb(0 0 0 / 0.35);
+    animation: rise 0.18s ease-out; transition: opacity 0.25s, transform 0.25s;
+  }
+  .toast.out { opacity: 0; transform: translateY(4px); }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+  #error {
+    position: absolute; left: 50%; bottom: 14px; z-index: 7; transform: translateX(-50%);
+    width: min(640px, calc(100% - 32px)); border-radius: 10px; background: var(--surface);
+    box-shadow: var(--pop-shadow);
+  }
+  #error[hidden] { display: none; }
+  #error header { display: flex; align-items: center; gap: 8px; padding: 8px 8px 6px 14px; font-weight: 600; color: var(--danger); }
+  #error header span { flex: 1; }
+  #error pre {
+    margin: 0; padding: 0 14px 12px; max-height: 200px; overflow: auto; white-space: pre-wrap;
+    overflow-wrap: anywhere; font: 11px/1.5 var(--mono); color: var(--ink-2);
+  }
+
+  /* The console: playback, then the command */
+  .dock { min-width: 0; padding: 0 16px 16px; }
+  .console {
+    border-radius: 10px; background: var(--surface);
+    box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.04);
+  }
+  .transport { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+  .transport .scrub { flex: 1; min-width: 60px; }
+  .transport .info { display: none; flex: 1; min-width: 0; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px; }
+  .transport.still :is(#animate, #frame-slider, .frames, .vrule) { display: none; }
+  .transport.still .info { display: block; }
+  .vrule { width: 1px; height: 18px; background: var(--line); }
+  .readout { display: flex; align-items: center; gap: 6px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .commandline { display: flex; align-items: flex-start; gap: 10px; padding: 8px 8px 8px 14px; }
+  .prompt { font: 600 12px/28px var(--mono); color: var(--glaze); user-select: none; }
+  #command {
+    flex: 1; min-width: 0; max-height: 64px; overflow-y: auto; padding: 4px 0;
+    font: 12px/20px var(--mono); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  #command .prog { color: var(--glaze); font-weight: 600; }
+  #command .option { white-space: nowrap; }  /* wrap between options, never inside "--azim 30" */
+  #command .flag { color: var(--ink-3); }
+
+  /* Inspector */
+  .inspector { grid-area: inspector; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--line); }
+  .panel { border-bottom: 1px solid var(--line); }
+  .panel[hidden] { display: none; }
+  .panel-head {
+    display: flex; align-items: center; width: 100%; height: 40px; padding: 0 12px 0 16px;
+    font-weight: 600; color: var(--ink); text-align: left;
+  }
+  .panel-head .icon { margin-left: auto; color: var(--ink-3); transition: transform 0.15s; }
+  .panel.closed .panel-head .icon { transform: rotate(-90deg); }
+  .panel-body { display: grid; gap: 2px; padding: 0 16px 14px; }
+  .panel.closed .panel-body { display: none; }
+  .subhead { margin: 8px 0 2px; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+
+  .row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 60px; align-items: center; gap: 10px; min-height: 28px; }
+  .row.dim > :not(.label-cell) { opacity: 0.4; }
+  .span2 { grid-column: 2 / 4; }
+  .label-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .label { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+  .label.scrub { cursor: ew-resize; transition: color 0.12s; }
+  .label.scrub:hover { color: var(--ink); }
+  .mini {
+    height: 18px; padding: 0 5px; border-radius: 5px; font-size: 10.5px; font-weight: 600;
+    color: var(--ink-3); background: var(--field); transition: background 0.12s, color 0.12s;
+  }
+  .mini:hover { color: var(--ink); }
+  .mini[aria-pressed=true] { color: var(--glaze); background: var(--glaze-soft); }
+
+  .field {
+    display: flex; align-items: center; height: 24px; min-width: 0; padding: 0 7px; border-radius: 6px;
+    background: var(--field); border: 1px solid transparent; transition: background 0.12s, border-color 0.12s;
+  }
+  .field:hover { background: var(--field-hover); }
+  .field:focus-within { background: var(--raised); border-color: var(--glaze); box-shadow: 0 0 0 3px var(--glaze-soft); }
+  .field input {
+    width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: none;
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .field input::placeholder { color: var(--ink-3); }
+  .field .unit { margin-left: 1px; color: var(--ink-3); }
+  .field.narrow { width: 52px; }
+  .pair { display: flex; align-items: center; gap: 6px; }
+  .pair .field { flex: 1; }
+  .pair .sep { color: var(--ink-3); }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0;
+    background: transparent; cursor: pointer; --fill: 50%;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 2px;
+    background: linear-gradient(to right, var(--glaze) var(--fill), var(--track) var(--fill));
+  }
+  input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--track); }
+  input[type=range]::-moz-range-progress { height: 3px; border-radius: 2px; background: var(--glaze); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4.5px; border-radius: 50%;
+    background: var(--thumb); box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 1px 3px rgb(0 0 0 / 0.25);
+    transition: transform 0.12s;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--thumb);
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.2), 0 1px 3px rgb(0 0 0 / 0.25);
+  }
+  input[type=range]:hover::-webkit-slider-thumb, input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); }
+  input[type=range]:focus-visible { outline: 0; }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--glaze-soft), 0 1px 3px rgb(0 0 0 / 0.25); }
+  input[type=range]:disabled { cursor: not-allowed; opacity: 0.4; }
+
+  .switch { position: relative; justify-self: end; width: 28px; height: 16px; }
+  .switch input { position: absolute; inset: 0; z-index: 1; margin: 0; opacity: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 8px; background: var(--track); transition: background 0.15s; }
+  .switch span::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.15s;
+  }
+  .switch input:checked + span { background: var(--glaze); }
+  .switch input:checked + span::after { transform: translateX(12px); }
+  .switch input:focus-visible + span { box-shadow: 0 0 0 3px var(--glaze-soft); }
+
+  #bg-row { grid-template-columns: 96px minmax(0, 1fr) 72px; }
+  #bg-hex { font-family: var(--mono); font-size: 11px; }
+  .swatches { display: flex; align-items: center; gap: 5px; }
+  .swatch {
+    position: relative; width: 16px; height: 16px; border-radius: 50%;
+    box-shadow: inset 0 0 0 1px var(--line-strong); transition: box-shadow 0.12s;
+  }
+  .swatch[aria-pressed=true] { box-shadow: inset 0 0 0 1px var(--line-strong), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--glaze); }
+  .swatch.custom { overflow: hidden; background: conic-gradient(#e0807a, #e8c46a, #8fc28f, #6fa8d8, #b58ad0, #e0807a); }
+  .swatch.custom input { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; }
+
+  .picker {
+    display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px 0 4px; border-radius: 6px;
+    background: var(--field); text-align: left; transition: background 0.12s;
+  }
+  .picker:hover { background: var(--field-hover); }
+  .picker .name { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .picker .icon { width: 12px; height: 12px; color: var(--ink-3); }
+  .ramp { flex: 1; height: 12px; min-width: 24px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
+  .ramp.missing { background: repeating-linear-gradient(135deg, var(--field) 0 4px, transparent 4px 8px); }
+
+  .menu {
+    position: fixed; z-index: 30; width: 260px; max-height: 340px; overflow-y: auto; padding: 4px;
+    border-radius: 10px; background: var(--raised); box-shadow: var(--pop-shadow);
+  }
+  .menu[hidden] { display: none; }
+  .menu button {
+    display: grid; grid-template-columns: 14px 76px 1fr; align-items: center; gap: 8px; width: 100%;
+    height: 28px; padding: 0 8px; border-radius: 6px; text-align: left;
+  }
+  .menu button:hover, .menu button:focus-visible { background: var(--field); outline: 0; }
+  .menu .tick { width: 14px; height: 14px; color: var(--glaze); visibility: hidden; }
+  .menu [aria-selected=true] .tick { visibility: visible; }
+  .menu .note { margin-top: 4px; padding: 7px 8px 5px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); }
+
+  .select {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 24px; padding: 0 24px 0 8px;
+    border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+    background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%238f8a83' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center / 12px;
+  }
+  .select:hover { background-color: var(--field-hover); }
+
+  @media (max-width: 760px) {
+    body {
+      overflow: auto; height: auto;
+      grid-template: "top" auto "stage" 72vh "inspector" auto / minmax(0, 1fr);
+    }
+    .topbar { flex-wrap: wrap; row-gap: 8px; padding: 8px 12px; }
+    .crumb .chip { display: none; }
+    .inspector { overflow: visible; border-left: 0; border-top: 1px solid var(--line); }
+    .dock { padding: 0 12px 12px; }
+    .transport .vrule, .glaze-btn kbd { display: none; }
   }
 </style>
 <script type="importmap">
@@ -71,54 +389,165 @@
 </script>
 </head>
 <body>
-<div id="stage">
-  <canvas></canvas>
-  <img id="cycles" alt="Cycles render" title="Click to return to the live view" hidden>
-</div>
-<aside>
-  <header><strong>glazed</strong> preview</header>
-  <p id="status">loading…</p>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <defs>
+        <linearGradient id="glaze-mark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color: var(--glaze-hi)"/>
+          <stop offset="1" style="stop-color: var(--glaze-lo)"/>
+        </linearGradient>
+      </defs>
+      <circle cx="12" cy="12" r="7" fill="none" stroke="url(#glaze-mark)" stroke-width="5.5"/>
+      <path d="M6.7 9.3a6 6 0 0 1 3.5-3.1" fill="none" stroke="#fff" stroke-opacity="0.8" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    glazed
+  </div>
+  <div class="crumb">
+    <span class="slash">/</span>
+    <span id="title">preview</span>
+    <span class="chip" id="size"></span>
+  </div>
+  <div class="spacer"></div>
+  <div class="segmented" role="group" aria-label="View">
+    <button data-mode="live" aria-pressed="true" title="The live preview (Esc)">Live</button>
+    <button data-mode="split" aria-pressed="false" disabled title="Compare the live preview with the Cycles render: drag across the image">Split</button>
+    <button data-mode="cycles" aria-pressed="false" disabled title="The last Cycles render">Cycles</button>
+  </div>
+  <button id="render" class="glaze-btn" title="Render this view with Cycles at preview quality (R)">
+    <svg class="icon" viewBox="0 0 16 16"><path d="M8 1.6l1.6 4.8 4.8 1.6-4.8 1.6L8 14.4l-1.6-4.8L1.6 8l4.8-1.6z" fill="currentColor" stroke="none"/></svg>
+    <span id="render-label">Render</span>
+    <kbd>R</kbd>
+  </button>
+</header>
 
-  <h2>Camera</h2>
-  <div id="camera"></div>
-  <label class="check"><input type="checkbox" id="fit"> fit the distance to the scene</label>
+<main id="stage">
+  <div id="viewport">
+    <div id="frame" data-mode="live">
+      <canvas></canvas>
+      <img id="cycles" alt="Cycles render">
+      <div class="divider">
+        <div class="handle"><svg class="icon" viewBox="0 0 16 16"><path d="M6 4.5L2.5 8 6 11.5M10 4.5l3.5 3.5-3.5 3.5"/></svg></div>
+      </div>
+      <span class="tag live">Live</span>
+      <span class="tag cycles">Cycles</span>
+      <div class="stale">Changed since this render <kbd>R</kbd></div>
+    </div>
+    <div class="hint" id="hint">Drag to orbit · Scroll to zoom</div>
+    <div id="loader"><div class="spinner"></div><span id="loader-text">Loading the scene</span></div>
+    <div id="toasts" aria-live="polite"></div>
+    <div id="error" role="alert" hidden>
+      <header>
+        <svg class="icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v3.6M8 10.9v.3"/></svg>
+        <span id="error-title"></span>
+        <button class="btn ghost square" id="error-close" aria-label="Dismiss">
+          <svg class="icon" viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>
+        </button>
+      </header>
+      <pre id="error-text"></pre>
+    </div>
+  </div>
 
-  <h2>Lighting</h2>
-  <div id="lighting"></div>
+  <div class="dock">
+    <div class="console">
+      <div class="transport">
+        <button id="animate" class="btn ghost square" aria-pressed="false" title="Play or pause the animation (Space)"></button>
+        <input type="range" id="frame-slider" class="scrub" min="0" step="1" value="0" aria-label="Frame">
+        <span class="readout frames">
+          <label class="field narrow"><input id="frame-number" aria-label="File frame" spellcheck="false"></label>
+          <span id="frame-last"></span>
+        </span>
+        <span class="info" id="turntable-info"></span>
+        <span class="vrule"></span>
+        <span class="readout">
+          <label class="field narrow" title="--fps: the video's speed, which previews play at"><input id="fps" aria-label="Frames per second" spellcheck="false"></label>
+          fps
+        </span>
+        <button id="play" class="btn ghost" aria-pressed="false">
+          <svg class="icon" viewBox="0 0 16 16"><path d="M14 8a6 6 0 1 1-6-6c1.7 0 3.3.7 4.5 1.8L14 5.3"/><path d="M14 2v3.3h-3.3"/></svg>
+          <span>Turntable</span>
+        </button>
+      </div>
+      <div class="commandline">
+        <span class="prompt">$</span>
+        <code id="command"></code>
+        <button id="copy" class="btn ghost" title="Copy the command"></button>
+      </div>
+    </div>
+  </div>
+</main>
 
-  <h2>Backdrop</h2>
-  <label class="row"><span>colour</span><input type="color" id="bg"></label>
-  <label class="check"><input type="checkbox" id="transparent"> transparent</label>
-
-  <section id="colormap" hidden>
-    <h2>Colormap</h2>
-    <label class="row"><span>names</span><input id="cmap" list="cmaps" class="wide"></label>
-    <label class="row"><span>min, max</span><input type="number" id="vmin" placeholder="data"><input type="number" id="vmax" placeholder="data"></label>
-    <datalist id="cmaps">
-      <option>viridis</option><option>plasma</option><option>inferno</option><option>magma</option>
-      <option>cividis</option><option>turbo</option><option>coolwarm</option><option>RdBu_r</option>
-      <option>Reds</option><option>Blues</option><option>Greys</option>
-    </datalist>
+<aside class="inspector">
+  <section class="panel" data-panel="view">
+    <button class="panel-head" aria-expanded="true">View<svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="panel-body" id="camera"></div>
   </section>
 
-  <section id="animation">
-    <h2>Animation</h2>
-    <div class="row" title="A video plays every frame; a still renders the first">
-      <button id="animate">Play</button><input type="range" id="frame" min="0" step="1"><input type="number" id="frame-number">
+  <section class="panel" data-panel="light">
+    <button class="panel-head" aria-expanded="true">Light<svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="panel-body" id="lighting"></div>
+  </section>
+
+  <section class="panel" data-panel="backdrop">
+    <button class="panel-head" aria-expanded="true">Backdrop<svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="panel-body">
+      <div class="row" id="bg-row">
+        <div class="label-cell"><span class="label">Colour</span></div>
+        <div class="swatches" id="swatches">
+          <label class="swatch custom" title="Any colour"><input type="color" id="bg" aria-label="Backdrop colour"></label>
+        </div>
+        <label class="field"><input id="bg-hex" aria-label="Backdrop colour, hex" spellcheck="false"></label>
+      </div>
+      <div class="row">
+        <div class="label-cell"><span class="label" title="--transparent: leave the backdrop transparent, for compositing">Transparent</span></div>
+        <span></span>
+        <label class="switch"><input type="checkbox" id="transparent" aria-label="Transparent backdrop"><span></span></label>
+      </div>
     </div>
   </section>
 
-  <h2>Image</h2>
-  <label class="row"><span>width, height</span><input type="number" id="width" min="16"><input type="number" id="height" min="16"></label>
-  <div class="buttons">
-    <button id="play">Play turntable</button>
-    <button id="render" class="primary">Render with Cycles</button>
-  </div>
+  <section class="panel" id="colormap" data-panel="colour" hidden>
+    <button class="panel-head" aria-expanded="true">Colour<svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="panel-body">
+      <div class="row">
+        <div class="label-cell"><span class="label" title="--cmap">Colormap</span></div>
+        <button class="picker span2" id="cmap-button" aria-haspopup="listbox">
+          <span class="name" id="cmap-name"></span>
+          <span class="ramp" id="cmap-ramp"></span>
+          <svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg>
+        </button>
+      </div>
+      <div class="row">
+        <div class="label-cell"><span class="label" title="--vmin, --vmax: the values at the colormap's ends; empty follows the data">Range</span></div>
+        <div class="pair span2">
+          <label class="field"><input id="vmin" aria-label="Minimum value" spellcheck="false"></label>
+          <span class="sep">–</span>
+          <label class="field"><input id="vmax" aria-label="Maximum value" spellcheck="false"></label>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <h2>Command</h2>
-  <pre id="command"></pre>
-  <button id="copy">Copy command</button>
+  <section class="panel" data-panel="output">
+    <button class="panel-head" aria-expanded="true">Output<svg class="icon" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></button>
+    <div class="panel-body">
+      <div class="row">
+        <div class="label-cell"><span class="label" title="--res">Size</span></div>
+        <div class="pair span2">
+          <label class="field"><input id="width" aria-label="Width" spellcheck="false"></label>
+          <span class="sep">×</span>
+          <label class="field"><input id="height" aria-label="Height" spellcheck="false"></label>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label-cell"><span class="label">Preset</span></div>
+        <select id="preset" class="select span2" aria-label="Size preset"></select>
+      </div>
+    </div>
+  </section>
 </aside>
+
+<div id="cmap-menu" class="menu" role="listbox" aria-label="Colormaps" hidden></div>
 
 <script type="module">
 import * as THREE from "three";
@@ -141,20 +570,28 @@ const LOADERS = { ".ply": PLYLoader, ".stl": STLLoader, ".obj": OBJLoader,
 const Y_UP = new Set([".obj", ".glb", ".gltf", ".fbx"]);  // Blender's importers turn these Z-up
 const VIRIDIS = ["#440154", "#472d7b", "#3b528b", "#2c728e", "#21918c", "#28ae80", "#5ec962",
                  "#addc30", "#fde725"];  // for when the server has no matplotlib
-const SLIDERS = {
-  camera: [["azim", "azimuth", -180, 180, 1], ["elev", "elevation", -89, 89, 1],
-           ["distance", "distance", 0.5, 12, 0.05], ["lens", "lens, mm", 12, 200, 1]],
-  lighting: [["exposure", "exposure", -3, 3, 0.1], ["key", "key", 0, 3, 0.05],
-             ["ambient", "ambient", 0, 3, 0.05], ["key_azim", "key azimuth", -180, 180, 1],
-             ["key_elev", "key elevation", 0, 90, 1]],
-  animation: [["fps", "speed, fps", 1, 120, 1]],  // the video's --fps; previews play at it
+const SLIDERS = {  // the inspector's rows, named like the command-line options
+  camera: [
+    { name: "azim", label: "Azimuth", min: -180, max: 180, step: 1, unit: "°" },
+    { name: "elev", label: "Elevation", min: -89, max: 89, step: 1, unit: "°" },
+    { name: "distance", label: "Distance", min: 0.5, max: 12, step: 0.05 },
+    { name: "lens", label: "Lens", min: 12, max: 200, step: 1, unit: "mm" },
+  ],
+  lighting: [
+    { name: "exposure", label: "Exposure", min: -3, max: 3, step: 0.1, unit: "EV" },
+    { name: "ambient", label: "Ambient", min: 0, max: 3, step: 0.05 },
+    { subhead: "Key light" },
+    { name: "key", label: "Strength", min: 0, max: 3, step: 0.05 },
+    { name: "key_azim", label: "Azimuth", min: -180, max: 180, step: 1, unit: "°" },
+    { name: "key_elev", label: "Elevation", min: 0, max: 90, step: 1, unit: "°" },
+  ],
 };
 const Z = new THREE.Vector3(0, 0, 1);
 
 const $ = (selector) => document.querySelector(selector);
 const rad = THREE.MathUtils.degToRad, deg = THREE.MathUtils.radToDeg;
 const round = (x, digits) => +x.toFixed(digits);
-const status = (text) => { $("#status").textContent = text; };
+const status = (text) => toast(text);
 const post = (route) => fetch(route, { method: "POST", body: JSON.stringify(opts) });
 
 const setup = await (await fetch("scene.json")).json();
@@ -241,7 +678,7 @@ function softShadows(shader) {
 const assets = [];
 try {
   for (const o of setup.objects) {
-    status(`loading ${o.name}`);
+    setLoading(`Loading ${o.name}`);
     const anchor = new THREE.Group();  // the entry's transform, like Asset.anchor
     anchor.position.fromArray(o.location);
     anchor.rotation.set(...o.rotation.map(rad), "ZYX");  // Blender's XYZ Euler
@@ -252,7 +689,8 @@ try {
     assets.push(asset);
   }
 } catch (err) {
-  status(`could not load the scene: ${err}`);
+  $("#loader").classList.add("done");
+  showError("Couldn't load the scene", String(err));
   throw err;
 }
 
@@ -518,6 +956,7 @@ function tick(clock, now) {  // video frames since the clock started
   clock.last += elapsed;
   return (clock.frames += (elapsed / 1000) * opts.fps);
 }
+
 function requestRender() {
   if (!queued) {
     queued = true;
@@ -543,27 +982,324 @@ function frame(now) {
   renderer.render(scene, camera);
 }
 
-function fitCanvas() {
-  const [w, h] = opts.res, stage = $("#stage").getBoundingClientRect();
-  const s = Math.min((stage.width - 32) / w, (stage.height - 32) / h);
+function fitCanvas() {  // the render's aspect, as large as the viewport allows
+  const [w, h] = opts.res, box = $("#viewport").getBoundingClientRect();
+  const s = Math.min((box.width - 64) / w, (box.height - 80) / h);  // room for the hint above
   const width = Math.max(1, Math.floor(w * s)), height = Math.max(1, Math.floor(h * s));
   renderer.setPixelRatio(Math.max(window.devicePixelRatio, 2));  // supersampled: smooths the soft shadows
   renderer.setSize(width, height);
-  Object.assign($("#cycles").style, { width: `${width}px`, height: `${height}px` });
+  Object.assign($("#frame").style, { width: `${width}px`, height: `${height}px` });
   placeCamera();
 }
 
+// ---- Interface ---------------------------------------------------------------------
+
+const ICONS = {
+  play: '<svg class="icon" viewBox="0 0 16 16"><path d="M5 3.2v9.6l7.6-4.8z" fill="currentColor" stroke="none"/></svg>',
+  pause: '<svg class="icon" viewBox="0 0 16 16"><path d="M4.6 3.4h2.2v9.2H4.6zM9.2 3.4h2.2v9.2H9.2z" fill="currentColor" stroke="none"/></svg>',
+  copy: '<svg class="icon" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/>'
+        + '<path d="M10.5 3.4A1.8 1.8 0 0 0 8.7 1.6H4.3a1.8 1.8 0 0 0-1.8 1.8v4.4a1.8 1.8 0 0 0 1.8 1.8"/></svg>',
+  check: '<svg class="icon" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+};
+const SWATCHES = [["#ffffff", "White"], ["#f0eeea", "Porcelain"], ["#2b2f36", "Slate"], ["#111111", "Black"]];
+const PRESETS = [[1400, 1050, "Still"], [1280, 720, "Video"], [1920, 1080, "Full HD"], [1080, 1080, "Square"]];
+const COLORMAPS = ["viridis", "plasma", "inferno", "magma", "cividis", "turbo", "coolwarm", "RdBu_r",
+                   "Reds", "Blues", "Greys"];
+const initial = structuredClone(opts);  // what double-clicking a label resets to
+const animated = fileFrames.length > 1;
+let bgHex = `#${new THREE.Color(setup.bgHex).getHexString()}`;
+
+function el(tag, className = "", text = "") {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+function toast(text, ms = 2600) {
+  const box = document.querySelector("#toasts");
+  while (box.children.length > 2) box.firstChild.remove();
+  const note = el("div", "toast", text);
+  box.append(note);
+  setTimeout(() => {
+    note.classList.add("out");
+    setTimeout(() => note.remove(), 300);
+  }, ms);
+}
+function showError(title, text) {
+  document.querySelector("#error-title").textContent = title;
+  document.querySelector("#error-text").textContent = text.trim();
+  document.querySelector("#error").hidden = false;
+}
+function setLoading(text) {
+  document.querySelector("#loader-text").textContent = text;
+}
+const typing = (e) => e.target.matches?.("input:not([type]), input[type=number], input[type=text], select");
+const setFill = (range) => {
+  const t = (range.valueAsNumber - range.min) / (range.max - range.min || 1);
+  range.style.setProperty("--fill", `${Math.min(1, Math.max(0, t)) * 100}%`);
+};
+
+// Drag a label sideways to change its value (shift for fine steps), as in Blender and Figma.
+function scrubbable(handle, { get, set, min, max, step }) {
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const start = e.clientX, from = get();
+    let moved = false;
+    handle.setPointerCapture(e.pointerId);
+    const move = (m) => {
+      const dx = m.clientX - start;
+      if (!moved && Math.abs(dx) < 3) return;
+      moved = true;
+      document.body.classList.add("scrubbing");
+      const perPixel = (max - min) / 240 * (m.shiftKey ? 0.1 : 1);
+      set(Math.min(max, Math.max(min, from + Math.round(dx * perPixel / step) * step)));
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      document.body.classList.remove("scrubbing");
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  });
+}
+
+// A text input that commits on Enter or blur, and reverts on Escape or nonsense.
+function commitOnChange(input, commit) {
+  input.addEventListener("change", () => {  // fires before blur, so Escape flags it first
+    if (!input.dataset.cancel) commit(input.value.trim());
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") {
+      input.dataset.cancel = "1";
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (input.dataset.cancel) {
+      delete input.dataset.cancel;
+      refreshInputs();
+    }
+  });
+}
+const finite = (text) => text !== "" && Number.isFinite(+text);
+
 const refreshers = [];
+function sliderRow({ name, label, min, max, step, unit }) {
+  const digits = (String(step).split(".")[1] ?? "").length;
+  const value = () => (name === "distance" ? distance() : opts[name]);
+  const set = (v) => {
+    opts[name] = round(+v, digits);
+    changed(name);
+  };
+
+  const row = el("div", "row");
+  const head = el("div", "label-cell");
+  const text = el("span", "label scrub", label);
+  text.title = `--${name.replaceAll("_", "-")}\nDrag to adjust (Shift for fine steps). Double-click to reset.`;
+  scrubbable(text, { get: value, set, min, max, step });
+  text.ondblclick = () => {
+    opts[name] = initial[name];
+    changed(name);
+  };
+  head.append(text);
+  if (name === "distance") {
+    const auto = el("button", "mini", "Auto");
+    auto.id = "fit";
+    auto.title = "Fit the distance to the scene, as a render does (F)";
+    auto.onclick = () => fit(opts.distance != null);
+    head.append(auto);
+  }
+
+  const range = Object.assign(el("input"), { type: "range", min, max, step });
+  range.setAttribute("aria-label", label);
+  range.oninput = () => set(range.value);
+  const field = el("label", "field");
+  const number = el("input");
+  number.setAttribute("aria-label", label);
+  number.spellcheck = false;
+  commitOnChange(number, (v) => (finite(v) ? set(v) : refreshInputs()));
+  field.append(number);
+  if (unit) field.append(el("span", "unit", unit));
+
+  refreshers.push(() => {
+    const v = value();
+    range.value = v;
+    setFill(range);
+    if (document.activeElement !== number) number.value = round(v, Math.max(digits, 1));
+  });
+  row.append(head, range, field);
+  return row;
+}
+
+for (const [group, items] of Object.entries(SLIDERS)) {
+  for (const item of items) {
+    $(`#${group}`).append(item.subhead ? el("div", "subhead", item.subhead) : sliderRow(item));
+  }
+}
+
+function fit(on) {
+  opts.distance = on ? null : round(distance(), 2);
+  changed("distance");
+}
+
+// Backdrop
+for (const [hex, name] of SWATCHES) {
+  const swatch = el("button", "swatch");
+  swatch.style.background = hex;
+  swatch.dataset.hex = hex;
+  swatch.title = `${name} ${hex}`;
+  swatch.setAttribute("aria-label", `${name} backdrop`);
+  swatch.onclick = () => setBackground(hex);
+  $(".swatch.custom").before(swatch);
+}
+function setBackground(hex) {
+  bgHex = hex.toLowerCase();
+  opts.bg = bgHex;
+  background = new THREE.Color(bgHex);
+  changed("bg");
+}
+$("#bg").oninput = (e) => setBackground(e.target.value);
+commitOnChange($("#bg-hex"), (v) => {
+  const hex = v.startsWith("#") ? v : `#${v}`;
+  if (/^#[0-9a-f]{6}$/i.test(hex)) setBackground(hex);
+  else refreshInputs();
+});
+$("#transparent").onchange = (e) => {
+  opts.transparent = e.target.checked;
+  changed("transparent");
+};
+function refreshBackdrop() {
+  let preset = false;
+  for (const swatch of document.querySelectorAll(".swatch[data-hex]")) {
+    const on = swatch.dataset.hex === bgHex;
+    preset ||= on;
+    swatch.setAttribute("aria-pressed", on);
+  }
+  $(".swatch.custom").setAttribute("aria-pressed", !preset);
+  $("#bg").value = bgHex;
+  if (document.activeElement !== $("#bg-hex")) $("#bg-hex").value = bgHex;
+  $("#transparent").checked = opts.transparent;
+  $("#bg-row").classList.toggle("dim", opts.transparent);
+  $("#frame").classList.toggle("checker", opts.transparent);
+}
+
+// Colormaps
+async function colormapTable(name) {
+  if (!(name in tables)) {
+    const response = await fetch(`colormap/${encodeURIComponent(name)}`);
+    tables[name] = response.ok ? await response.json() : null;
+  }
+  return tables[name] ?? (name === "viridis" ? viridis : null);
+}
+async function drawRamp(node, name) {
+  const table = await colormapTable(name);
+  node.classList.toggle("missing", !table);
+  node.style.background = table ? `linear-gradient(90deg, ${Array.from({ length: 16 }, (_, i) =>
+    `rgb(${table[Math.round((i / 15) * 255)].map((c) => Math.round(c * 255)).join(" ")})`).join(", ")})` : "";
+}
+function refreshColormap() {
+  if (!valued.length) return;
+  const [first, ...more] = opts.cmap;
+  $("#cmap-name").textContent = more.length ? `${first} +${more.length}` : first;
+  $("#cmap-button").title = `--cmap ${opts.cmap.join(" ")}`;
+  drawRamp($("#cmap-ramp"), first);
+  for (const [i, name] of ["vmin", "vmax"].entries()) {
+    if (document.activeElement !== $(`#${name}`)) $(`#${name}`).value = opts[name] ?? "";
+    $(`#${name}`).placeholder = round(dataRange[i], 3);
+  }
+}
+function openMenu() {
+  const menu = $("#cmap-menu"), box = $("#cmap-button").getBoundingClientRect();
+  menu.replaceChildren();
+  for (const name of new Set([...opts.cmap, ...COLORMAPS])) {
+    const item = el("button");
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", opts.cmap.includes(name));
+    item.innerHTML = ICONS.check.replace('class="icon"', 'class="icon tick"');
+    const ramp = el("span", "ramp");
+    item.append(el("span", "", name), ramp);
+    drawRamp(ramp, name);
+    item.onclick = (e) => {
+      if (e.shiftKey || e.metaKey || e.ctrlKey) {  // several colormaps: one render each
+        const on = opts.cmap.includes(name);
+        if (on && opts.cmap.length === 1) return;
+        opts.cmap = on ? opts.cmap.filter((n) => n !== name) : [...opts.cmap, name];
+        item.setAttribute("aria-selected", !on);
+      } else {
+        opts.cmap = [name];
+        closeMenu();
+      }
+      changed("cmap");
+    };
+    menu.append(item);
+  }
+  menu.append(el("div", "note", "Shift-click to add colormaps: one render each."));
+  menu.hidden = false;
+  const fits = box.bottom + 4 + menu.offsetHeight <= window.innerHeight - 8;
+  const top = fits ? box.bottom + 4 : box.top - 4 - menu.offsetHeight;
+  Object.assign(menu.style, { top: `${Math.max(8, top)}px`,
+                              left: `${Math.max(8, box.right - menu.offsetWidth)}px` });
+  menu.querySelector("[aria-selected=true]")?.focus();
+}
+function closeMenu() {
+  $("#cmap-menu").hidden = true;
+}
+$("#cmap-button").onclick = (e) => {
+  e.stopPropagation();
+  if ($("#cmap-menu").hidden) openMenu();
+  else closeMenu();
+};
+document.addEventListener("pointerdown", (e) => {
+  if (!$("#cmap-menu").hidden && !e.target.closest("#cmap-menu, #cmap-button")) closeMenu();
+});
+for (const name of ["vmin", "vmax"]) {
+  commitOnChange($(`#${name}`), (v) => {
+    if (v !== "" && !finite(v)) return refreshInputs();
+    opts[name] = v === "" ? null : +v;
+    changed(name);
+  });
+}
+$("#colormap").hidden = !valued.length;
+
+// Output size
+for (const [w, h, name] of PRESETS) {
+  $("#preset").append(Object.assign(el("option", "", `${name} · ${w} × ${h}`), { value: `${w}x${h}` }));
+}
+$("#preset").append(Object.assign(el("option", "", "Custom"), { value: "custom", disabled: true }));
+$("#preset").onchange = (e) => {
+  opts.res = e.target.value.split("x").map(Number);
+  changed("res");
+};
+for (const [i, name] of ["width", "height"].entries()) {
+  commitOnChange($(`#${name}`), (v) => {
+    if (!finite(v)) return refreshInputs();
+    opts.res = opts.res.map((x, j) => (j === i ? Math.max(16, Math.round(+v)) : x));
+    changed("res");
+  });
+}
+
 function refreshInputs() {
   refreshers.forEach((refresh) => refresh());
-  $("#fit").checked = opts.distance == null;
-  $("#transparent").checked = opts.transparent;
-  canvas.classList.toggle("checker", opts.transparent);
-  $("#cycles").classList.toggle("checker", opts.transparent);
-  $("#cmap").value = opts.cmap.join(" ");
-  $("#vmin").value = opts.vmin ?? "";
-  $("#vmax").value = opts.vmax ?? "";
-  [$("#width").value, $("#height").value] = opts.res;
+  $("#fit").setAttribute("aria-pressed", opts.distance == null);
+  refreshBackdrop();
+  refreshColormap();
+  for (const [i, name] of ["width", "height"].entries()) {
+    if (document.activeElement !== $(`#${name}`)) $(`#${name}`).value = opts.res[i];
+  }
+  $("#size").textContent = `${opts.res[0]} × ${opts.res[1]}`;
+  $("#preset").value = PRESETS.some(([w, h]) => w === opts.res[0] && h === opts.res[1])
+    ? opts.res.join("x") : "custom";
+  if (document.activeElement !== $("#fps")) $("#fps").value = opts.fps;
+  if (document.activeElement !== $("#frame-number")) $("#frame-number").value = fileFrames[frameIndex] ?? "";
+  const length = fileFrames.length || setup.animation.frames;
+  const seconds = `${length} frames · ${(length / opts.fps).toFixed(1)} s`;
+  $("#turntable-info").textContent = `The video's camera path · ${seconds}`;
+  $("#play").title = `Play the video's camera path, ${seconds} (Space stops it)`;
+  refreshStale();
 }
 
 function changed(name) {
@@ -575,169 +1311,267 @@ function changed(name) {
   updateCommand();
 }
 
-let command = "", commandTimer;
-function updateCommand() {
+let command = "", commandTimer, commandAsked = 0, commandShown = 0, pending = null;
+function updateCommand() {  // debounced; `pending` settles once the latest command is shown
   clearTimeout(commandTimer);
+  if (!pending) {
+    let settle;
+    pending = new Promise((resolve) => { settle = resolve; });
+    pending.settle = settle;
+  }
   commandTimer = setTimeout(async () => {
-    command = (await (await post("command")).json()).command;
-    const [inputs, ...options] = command.split(/ (?=--)/);
-    $("#command").replaceChildren(inputs, ...options.flatMap((option) => [
-      " ", Object.assign(document.createElement("span"), { className: "option", textContent: option }),
-    ]));
+    const asked = ++commandAsked, waiting = pending;
+    pending = null;
+    try {
+      const text = (await (await post("command")).json()).command;
+      if (asked > commandShown) {  // a slow answer never replaces a newer one
+        commandShown = asked;
+        showCommand(text);
+      }
+    } finally {
+      waiting.settle();
+    }
   }, 120);
 }
+function showCommand(text) {
+  command = text;
+  const [inputs, ...options] = command.split(/ (?=--)/);
+  const [program, ...files] = inputs.split(" ");
+  $("#command").replaceChildren(el("span", "prog", program), ` ${files.join(" ")}`,
+    ...options.flatMap((option) => {
+      const [flag, ...rest] = option.split(" ");
+      const span = el("span", "option");
+      span.append(el("span", "flag", flag), rest.length ? ` ${rest.join(" ")}` : "");
+      return [" ", span];
+    }));
+  const title = files.map((file) => file.replace(/^'|'$/g, "").split("/").pop()).join(", ");
+  $("#title").textContent = title;
+  document.title = `${title} · glazed`;
+}
 
-for (const [group, sliders] of Object.entries(SLIDERS)) {
-  for (const [name, label, min, max, step] of sliders) {
-    const row = Object.assign(document.createElement("label"), { className: "row" });
-    const range = Object.assign(document.createElement("input"), { type: "range", min, max, step });
-    const number = Object.assign(document.createElement("input"), { type: "number", step });
-    const digits = (String(step).split(".")[1] ?? "").length;
-    const set = (value) => {
-      opts[name] = round(+value, digits);
-      changed(name);
-    };
-    range.oninput = () => set(range.value);
-    number.onchange = () => set(number.value);
-    refreshers.push(() => {
-      const value = name === "distance" ? distance() : opts[name];
-      range.value = value;
-      if (document.activeElement !== number) number.value = round(value, Math.max(digits, 1));
-    });
-    row.append(Object.assign(document.createElement("span"), { textContent: label }), range, number);
-    $(`#${group}`).append(row);
+let copyTimer;
+$("#copy").innerHTML = `${ICONS.copy}<span>Copy</span>`;
+$("#copy").onclick = async () => {
+  try {
+    if (pending) await pending;  // a change made just before the click
+    await navigator.clipboard.writeText(command);
+  } catch {
+    toast("Couldn't reach the clipboard: select the command instead");
+    return;
   }
-}
+  $("#copy").innerHTML = `${ICONS.check}<span>Copied</span>`;
+  $("#copy").classList.add("done");
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => {
+    $("#copy").innerHTML = `${ICONS.copy}<span>Copy</span>`;
+    $("#copy").classList.remove("done");
+  }, 1600);
+};
 
-$("#fit").onchange = (e) => {
-  opts.distance = e.target.checked ? null : round(distance(), 2);
-  changed("distance");
-};
-$("#bg").value = /^#[0-9a-f]{6}$/i.test(setup.bgHex) ? setup.bgHex : "#ffffff";
-$("#bg").oninput = (e) => {
-  opts.bg = e.target.value;
-  background = new THREE.Color(opts.bg);
-  changed("bg");
-};
-$("#transparent").onchange = (e) => {
-  opts.transparent = e.target.checked;
-  changed("transparent");
-};
-$("#colormap").hidden = !valued.length;
-$("#cmap").onchange = (e) => {
-  const names = e.target.value.trim().split(/\s+/).filter(Boolean);
-  opts.cmap = names.length ? names : ["viridis"];
-  changed("cmap");
-};
-for (const name of ["vmin", "vmax"]) {
-  $(`#${name}`).onchange = (e) => {
-    opts[name] = e.target.value === "" ? null : +e.target.value;
-    changed(name);
-  };
-}
-for (const [i, name] of ["width", "height"].entries()) {
-  $(`#${name}`).onchange = (e) => {
-    opts.res = opts.res.map((v, j) => (j === i ? Math.max(16, Math.round(+e.target.value)) : v));
-    changed("res");
-  };
-}
-
+// Playback
 let frameIndex = 0;
 function showFrame(i) {
   if (i === frameIndex) return;
   frameIndex = i;
   assets.forEach((asset) => asset.setFrame?.(i));
-  $("#frame").value = i;
+  $("#frame-slider").value = i;
+  setFill($("#frame-slider"));
   if (document.activeElement !== $("#frame-number")) $("#frame-number").value = fileFrames[i];
+  refreshStale();
   requestRender();
 }
-const animated = fileFrames.length > 1;
-if (!animated) {
-  $("#animation").querySelectorAll("button, input").forEach((control) => { control.disabled = true; });
-  $("#animation").title = "Nothing in this scene is animated";
-}
-$("#frame").max = Math.max(fileFrames.length - 1, 0);
-$("#frame").value = 0;
+$(".transport").classList.toggle("still", !animated);
+$("#frame-slider").max = Math.max(fileFrames.length - 1, 0);
 $("#frame-number").value = fileFrames[0] ?? "";
-$("#frame").oninput = (e) => {
+$("#frame-last").textContent = `/ ${fileFrames.at(-1) ?? 0}`;
+setFill($("#frame-slider"));
+$("#frame-slider").oninput = (e) => {
   animate(false);
   showFrame(+e.target.value);
+  setFill(e.target);
 };
-$("#frame-number").onchange = (e) => {  // the nearest frame a video plays
+commitOnChange($("#frame-number"), (v) => {  // the nearest frame a video plays
   animate(false);
-  const distances = fileFrames.map((frame) => Math.abs(frame - e.target.value));
-  showFrame(distances.indexOf(Math.min(...distances)));
-  e.target.value = fileFrames[frameIndex];
-};
+  if (finite(v)) {
+    const distances = fileFrames.map((f) => Math.abs(f - v));
+    showFrame(distances.indexOf(Math.min(...distances)));
+  }
+  $("#frame-number").value = fileFrames[frameIndex];
+});
+commitOnChange($("#fps"), (v) => {
+  if (!finite(v)) return refreshInputs();
+  opts.fps = Math.min(240, Math.max(1, Math.round(+v)));
+  changed("fps");
+});
 
 function animate(on) {  // the animation alone, from the current frame; the camera stays free
-  if (on && playing !== null) turntable(false);
+  if (on && !animated) return;
+  if (on) {
+    if (playing !== null) turntable(false);
+    setMode("live");
+  }
   animating = on ? newClock(frameIndex) : null;
-  $("#animate").textContent = on ? "Pause" : "Play";
+  $("#animate").innerHTML = on ? ICONS.pause : ICONS.play;
+  $("#animate").setAttribute("aria-pressed", on);
   requestRender();
 }
 $("#animate").onclick = () => animate(animating === null);
-if (animated) $("#animate").title = "Play or pause (space)";
+animate(false);
 
 function turntable(on) {  // the video: camera path and animation together, from the start
-  if (on) animate(false);
+  if (on) {
+    animate(false);
+    setMode("live");
+  }
   playing = on ? newClock() : null;
-  controls.enabled = !on;
-  $("#play").textContent = on ? "Stop" : "Play turntable";
+  syncControls();
+  $("#play").setAttribute("aria-pressed", on);
+  $("#play span").textContent = on ? "Stop" : "Turntable";
   if (on) requestRender();
   else placeCamera();
 }
 $("#play").onclick = () => turntable(playing === null);
 
-// Space pauses whatever plays, or plays the animation, except while typing in a field.
-let spaceTaken = false;
-const typing = (e) => e.target.matches?.("input[type=number], input:not([type])");
-document.addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || typing(e) || (playing === null && !animated)) return;
-  e.preventDefault();  // no scrolling
-  spaceTaken = true;
-  if (e.repeat) return;
+// Live, split and Cycles views
+let mode = "live", rendered = null;  // the options and frame of the last Cycles render
+function syncControls() {
+  controls.enabled = playing === null && mode === "live";
+}
+function setMode(next) {
+  if (next !== "live" && rendered === null) return;
+  if (next !== "live") {
+    if (playing !== null) turntable(false);
+    if (animating !== null) animate(false);
+  }
+  mode = next;
+  $("#frame").dataset.mode = mode;
+  for (const button of document.querySelectorAll(".segmented button")) {
+    button.setAttribute("aria-pressed", button.dataset.mode === mode);
+  }
+  syncControls();
+  refreshStale();
+  requestRender();
+}
+for (const button of document.querySelectorAll(".segmented button")) {
+  button.onclick = () => setMode(button.dataset.mode);
+}
+function refreshStale() {
+  $("#frame").classList.toggle("outdated",
+    rendered !== null && (rendered.options !== JSON.stringify(opts) || rendered.frame !== frameIndex));
+}
+$("#frame").addEventListener("pointerdown", (e) => {  // drag the split
+  if (mode !== "split" || e.button !== 0) return;
+  const frameBox = $("#frame").getBoundingClientRect();
+  const move = (m) => {
+    const split = Math.min(1, Math.max(0, (m.clientX - frameBox.left) / frameBox.width));
+    $("#frame").style.setProperty("--split", `${split * 100}%`);
+  };
+  move(e);
+  $("#frame").setPointerCapture(e.pointerId);
+  $("#frame").onpointermove = move;
+  $("#frame").onpointerup = () => { $("#frame").onpointermove = null; };
+});
+
+let firing = false;
+async function renderCycles() {
+  if (firing || !setup.canRender) return;
   if (playing !== null) turntable(false);
-  else animate(animating === null);
+  if (animating !== null) animate(false);
+  if (frameIndex !== 0) {
+    showFrame(0);
+    toast("Cycles renders the first frame, as a still does");
+  }
+  firing = true;
+  const button = $("#render"), label = $("#render-label"), started = performance.now();
+  const seconds = () => Math.round((performance.now() - started) / 1000);
+  button.disabled = true;
+  button.classList.add("firing");
+  label.textContent = "Rendering";
+  const timer = setInterval(() => { label.textContent = `Rendering ${seconds()}s`; }, 1000);
+  const options = JSON.stringify(opts);
+  try {
+    const response = await post("render");
+    if (!response.ok) throw new Error(await response.text());
+    const image = $("#cycles");
+    if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src);
+    image.src = URL.createObjectURL(await response.blob());
+    await image.decode();
+    rendered = { options, frame: 0 };
+    document.querySelectorAll(".segmented button").forEach((b) => { b.disabled = false; });
+    setMode(mode === "live" ? "cycles" : mode);
+    toast(`Rendered ${image.naturalWidth} × ${image.naturalHeight} in ${seconds()} s`);
+  } catch (err) {
+    showError("The Cycles render failed", err.message || String(err));
+  } finally {
+    clearInterval(timer);
+    firing = false;
+    button.classList.remove("firing");
+    button.disabled = false;
+    label.textContent = "Render";
+  }
+}
+$("#render").onclick = renderCycles;
+if (!setup.canRender) {
+  $("#render").disabled = true;
+  $("#render").title = "Rendering needs bpy: start the preview from the render environment "
+                     + "(pip install \"glazed[render]\")";
+}
+$("#error-close").onclick = () => { $("#error").hidden = true; };
+
+// Panels fold, and stay as they were left
+for (const panel of document.querySelectorAll(".panel")) {
+  const head = panel.querySelector(".panel-head"), key = `glazed.panel.${panel.dataset.panel}`;
+  try {
+    if (localStorage.getItem(key) === "closed") panel.classList.add("closed");
+  } catch {}
+  head.setAttribute("aria-expanded", !panel.classList.contains("closed"));
+  head.onclick = () => {
+    const closed = panel.classList.toggle("closed");
+    head.setAttribute("aria-expanded", !closed);
+    try {
+      localStorage.setItem(key, closed ? "closed" : "open");
+    } catch {}
+  };
+}
+
+// Keys: Space plays or pauses, R renders, F fits, Esc returns to the live view. Letters
+// go by the key's place (e.code), so they work under any layout or input method, such
+// as Korean, where R types ㄱ.
+let spaceTaken = false;
+document.addEventListener("keydown", (e) => {
+  if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === "Space") {
+    if (playing === null && !animated) return;
+    e.preventDefault();  // no scrolling, and no click on a focused button
+    spaceTaken = true;
+    if (e.repeat) return;
+    if (playing !== null) turntable(false);
+    else animate(animating === null);
+  } else if (e.code === "KeyR") {
+    renderCycles();
+  } else if (e.code === "KeyF") {
+    fit(true);
+  } else if (e.key === "Escape") {
+    if (!$("#cmap-menu").hidden) closeMenu();
+    else if (!$("#error").hidden) $("#error").hidden = true;
+    else setMode("live");
+  }
 });
 document.addEventListener("keyup", (e) => {  // a focused button would click on this keyup
   if (e.code === "Space" && spaceTaken) e.preventDefault();
   spaceTaken = false;
 });
 
-$("#render").disabled = !setup.canRender;
-if (!setup.canRender) {
-  $("#render").title = "Needs bpy: start the preview from the render environment "
-                     + "(pip install \"glazed[render]\")";
-}
-$("#render").onclick = async () => {
-  $("#render").disabled = true;
-  status("rendering with Cycles…");
-  const response = await post("render");
-  if (response.ok) {
-    $("#cycles").src = URL.createObjectURL(await response.blob());
-    $("#cycles").hidden = false;
-    status(`Cycles render at preview quality${frameIndex ? ", of the first frame, as a still renders it" : ""}. `
-           + "Click it to return to the live view.");
-  } else {
-    status(`render failed:\n${await response.text()}`);
-  }
-  $("#render").disabled = false;
-};
-$("#cycles").onclick = () => {
-  $("#cycles").hidden = true;
-  status("");
-};
-$("#copy").onclick = async () => {
-  await navigator.clipboard.writeText(command);
-  status("command copied");
-};
+const hideHint = () => $("#hint").classList.add("gone");
+controls.addEventListener("start", hideHint);
+setTimeout(hideHint, 8000);
+if (animated) $("#hint").textContent += " · Space to play";
 
-status("drag to orbit, scroll to zoom");
 refreshInputs();
 await paint();
-new ResizeObserver(fitCanvas).observe($("#stage"));
+new ResizeObserver(fitCanvas).observe($("#viewport"));
 updateCommand();
+$("#loader").classList.add("done");
 </script>
 </body>
 </html>
