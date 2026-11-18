@@ -62,20 +62,26 @@ class Shot:
     camera: bpy.types.Object
     light_rig: bpy.types.Object
     poses: list[Pose]
+    file_frames: list[int]  # an animated file's frame for each pose; empty when nothing moves
     supersample: int
     background: tuple[float, float, float] | None  # sRGB; None keeps the alpha
 
     def still(self, path: str) -> None:
-        aim(self.camera, self.light_rig, *self.poses[0])
+        self.pose(0)
         self.render(path)
         print(f"[ok] {path}")
 
     def frames(self, out_dir: str) -> None:
         os.makedirs(out_dir, exist_ok=True)
-        for i, pose in enumerate(self.poses):
-            aim(self.camera, self.light_rig, *pose)
+        for i in range(len(self.poses)):
+            self.pose(i)
             self.render(os.path.join(out_dir, FRAME_PATTERN % i))
             print(f"[i]   frame {i + 1}/{len(self.poses)}")
+
+    def pose(self, i: int) -> None:
+        if self.file_frames:
+            bpy.context.scene.frame_set(self.file_frames[i])
+        aim(self.camera, self.light_rig, *self.poses[i])
 
     def render(self, path: str) -> None:
         bpy.context.scene.render.filepath = path

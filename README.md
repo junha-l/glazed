@@ -34,7 +34,8 @@ stay true to their colorbars. Renders stills, turntable videos, and GIFs.
 ## Highlights
 
 - **Point clouds, meshes, or both** in one scene: `.npy`, `.ply`, `.stl`, `.obj`,
-  `.glb`, `.gltf`, and `.fbx`, laid out by a small TOML scene file.
+  `.glb`, `.gltf`, `.fbx`, and USD, laid out by a small TOML scene file.
+- **Animated USD files** play in videos, such as a simulation replay.
 - **A studio look out of the box**: a seamless backdrop, a soft side light, contact
   shadows, and Blender's Standard view, so colormaps match their colorbars.
 - **Stills, turntable videos, and GIFs** from one command, with camera paths for
@@ -102,7 +103,8 @@ write_scene("out/scene.toml", [
 ```
 
 Point clouds are `.npy` arrays of shape (N, 3) xyz, (N, 4) xyz + value, or
-(N, 6) xyz + RGB. Meshes can be `.ply`, `.stl`, `.obj`, `.glb`, `.gltf`, or `.fbx`;
+(N, 6) xyz + RGB. Meshes can be `.ply`, `.stl`, `.obj`, `.glb`, `.gltf`, `.fbx`, or
+USD (`.usd`, `.usda`, `.usdc`, `.usdz`);
 `save_mesh` writes PLY, which Blender reads with coordinates as stored, while OBJ
 files are treated as Y-up. `glazed.io` also has `sample_surface`, `to_z_up`,
 `check_alignment`, `grid_locations`, `read_scene`, and `check_scene`.
@@ -198,6 +200,22 @@ orbit's centre.
 ```json
 {"eye": [[3, -3, 1], [3, 3, 1.5], [-3, 3, 1]], "target": [[0, 0, 0]], "loop": true}
 ```
+
+### Animated files
+
+A USD file with animation, such as a simulation replay, plays in video modes: one
+video frame per frame of the file, so the file sets the length instead of
+`--frames`. `--every 2` renders every 2nd frame. A 60 fps file then plays in real
+time at the default `--fps 30`. The floor and framing cover the whole animation.
+A still renders the first frame. The preview can't show USD files.
+
+```bash
+glazed replay.usd --mode mp4 --every 2 --turns 0 --color original \
+    --res 1280 720 --samples 128 --supersample 1 --gpu
+```
+
+`--turns 0` keeps the camera still. `--color original` keeps the file's own
+materials.
 
 ### Quality
 

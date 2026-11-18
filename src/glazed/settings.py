@@ -36,7 +36,8 @@ class View:
 
 @dataclass
 class Animation:
-    frames: int = 120
+    frames: int = 120  # an animated file sets its own: one per rendered frame of the file
+    every: int = 1  # animated files: render every Nth frame
     fps: int = 30
     turns: float = 1.0
     elev_amp: float = 0.0  # degrees of up-down sway

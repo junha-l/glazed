@@ -30,14 +30,16 @@ def render(specs: list[AssetSpec], out: str = "outs/render", modes=("still",),
     view, animation, colormap = view or View(), animation or Animation(), colormap or Colormap()
     video = not VIDEO_MODES.isdisjoint(modes)
 
-    scene = build_scene(specs)
+    scene = build_scene(specs, animation.every)
+    # An animated file sets the video's length, one frame per rendered frame of the file.
+    frames = scene.frames if video else scene.frames[:1]
+    poses = camera_poses(scene, view, animation,
+                         len(frames) or (animation.frames if video else 1), settings.resolution)
     light_rig = build_studio(scene.floor_z, lighting)
     camera = new_camera(view.lens)
     configure(settings, bit_depth=8 if video else 16)
     background = None if settings.background is None else color.parse_color(settings.background)
-    poses = camera_poses(scene, view, animation, animation.frames if video else 1,
-                         settings.resolution)
-    shot = Shot(camera, light_rig, poses, settings.supersample, background)
+    shot = Shot(camera, light_rig, poses, frames, settings.supersample, background)
 
     out = Path(out)
     if out.suffix.lower() in OUTPUT_SUFFIXES:

@@ -24,7 +24,7 @@ from urllib.parse import quote, unquote, urlparse
 import numpy as np
 
 from .cli import to_argv
-from .io import POINT_CLOUD_SUFFIXES, AssetSpec, point_radius
+from .io import POINT_CLOUD_SUFFIXES, USD_SUFFIXES, AssetSpec, point_radius
 
 PAGE = Path(__file__).with_name("preview.html")
 # The options the page controls; everything else keeps its command-line value.
@@ -38,6 +38,10 @@ QUICK_WIDTH = 640
 
 class Preview:
     def __init__(self, specs: list[AssetSpec], args: argparse.Namespace):
+        for spec in specs:
+            if Path(spec.path).suffix.lower() in USD_SUFFIXES:
+                raise ValueError(f"{spec.path}: the preview can't show USD files; render it "
+                                 "instead, e.g. a quick still with --res 480 360 --samples 32")
         self.specs, self.args = specs, args
         self.clouds = {i: np.load(spec.path).astype(np.float32) for i, spec in enumerate(specs)
                        if Path(spec.path).suffix.lower() in POINT_CLOUD_SUFFIXES}

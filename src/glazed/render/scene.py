@@ -10,7 +10,7 @@ from mathutils import Matrix
 
 from ..io import AssetSpec
 from .assets import Asset, load_asset
-from .blender import new_object, reset
+from .blender import new_object, reset, world_corners
 
 
 @dataclass
@@ -19,7 +19,8 @@ class Scene:
     a largest half-side of 1. Lighting, floor and framing all work in these units,
     which keeps them independent of the data's scale."""
     assets: list[Asset]
-    points: np.ndarray  # every point and vertex, normalised
+    points: np.ndarray  # every point and vertex, normalised, plus where animated objects go
+    frames: list[int]  # the frames of an animated file to render; empty when nothing moves
 
     @property
     def floor_z(self) -> float:
@@ -45,14 +46,32 @@ class Scene:
             asset.paint(cmap, vmin, vmax)
 
 
-def build_scene(specs: list[AssetSpec]) -> Scene:
+def build_scene(specs: list[AssetSpec], every: int = 1) -> Scene:
+    """With an animated file, the bounds, and so the floor and the framing, cover every
+    rendered frame, from the file's frame range in steps of `every`."""
     reset()
     root = new_object("scene")
     assets = [load_asset(spec, root) for spec in specs]
-    bpy.context.view_layer.update()
+    frames = []
+    if any(asset.animated for asset in assets):
+        scene = bpy.context.scene
+        frames = list(range(scene.frame_start, scene.frame_end + 1, every))
+        print(f"[i] animated: frames {scene.frame_start}-{scene.frame_end}, "
+              f"{len(frames)} of them at every {every}")
 
-    points = np.concatenate([asset.world_points() for asset in assets])
+    moving = [corners(assets, frame) for frame in frames[1:]]
+    if frames:
+        bpy.context.scene.frame_set(frames[0])
+    bpy.context.view_layer.update()
+    points = np.concatenate([asset.world_points() for asset in assets] + moving)
     center = (points.min(axis=0) + points.max(axis=0)) / 2
     scale = 1.0 / np.abs(points - center).max()
     root.matrix_world = Matrix.Scale(scale, 4) @ Matrix.Translation(-center)
-    return Scene(assets, (points - center) * scale)
+    return Scene(assets, (points - center) * scale, frames)
+
+
+def corners(assets: list[Asset], frame: int) -> np.ndarray:
+    """Bounding box corners of the moving assets' objects at `frame`."""
+    bpy.context.scene.frame_set(frame)
+    return np.concatenate([world_corners(obj) for asset in assets if asset.animated
+                           for obj in asset.objects])

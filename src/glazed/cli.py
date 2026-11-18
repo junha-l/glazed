@@ -30,7 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     g = p.add_argument_group("objects (scene file entries override these)")
     g.add_argument("--color", default=AssetSpec.color,
-                   help="colour of anything without per-point values")
+                   help='colour of anything without per-point values; "original" keeps '
+                        "each mesh's own materials")
     g.add_argument("--radius", type=float, help="point radius in data units (default: automatic)")
     g.add_argument("--radius-scale", type=float, default=AssetSpec.radius_scale,
                    help="multiplier on the automatic point radius")
@@ -54,9 +55,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help='camera path JSON {"eye": [[x, y, z], ...], "target": [...], "loop": true}')
 
     g = p.add_argument_group("animation")
-    g.add_argument("--frames", type=int, default=Animation.frames)
+    g.add_argument("--frames", type=int, default=Animation.frames,
+                   help="video length; an animated file (USD) sets its own")
+    g.add_argument("--every", type=int, default=Animation.every,
+                   help="animated files: render every Nth frame")
     g.add_argument("--fps", type=int, default=Animation.fps)
-    g.add_argument("--turns", type=float, default=Animation.turns)
+    g.add_argument("--turns", type=float, default=Animation.turns,
+                   help="camera orbits over the video; 0 keeps the camera still")
     g.add_argument("--elev-amp", type=float, default=Animation.elev_amp,
                    help="degrees of up-down sway")
     g.add_argument("--dolly", type=float, default=Animation.dolly,
@@ -129,7 +134,10 @@ def main(argv=None) -> None:
         sys.exit(f"glazed: {err}")
     if args.preview:
         from .preview import serve
-        serve(specs, args)
+        try:
+            serve(specs, args)
+        except ValueError as err:
+            sys.exit(f"glazed: {err}")
         return
     try:
         from .render import render
@@ -146,7 +154,7 @@ def main(argv=None) -> None:
                           key_elev=args.key_elev),
         view=View(azim=args.azim, elev=args.elev, distance=args.distance, lens=args.lens,
                   waypoints=args.waypoints),
-        animation=Animation(frames=args.frames, fps=args.fps, turns=args.turns,
+        animation=Animation(frames=args.frames, every=args.every, fps=args.fps, turns=args.turns,
                             elev_amp=args.elev_amp, dolly=args.dolly, ease=args.ease,
                             gif_width=args.gif_width, keep_frames=args.keep_frames),
         colormap=Colormap(names=tuple(args.cmap), vmin=args.vmin, vmax=args.vmax,

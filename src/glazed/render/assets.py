@@ -13,7 +13,7 @@ from pathlib import Path
 import bpy
 import numpy as np
 
-from ..io import AssetSpec, point_radius
+from ..io import USD_SUFFIXES, AssetSpec, point_radius
 from . import color
 from .blender import COLOR_ATTRIBUTE, new_object, world_vertices, write_colors
 
@@ -24,11 +24,13 @@ IMPORTERS = {
     ".glb": bpy.ops.import_scene.gltf,
     ".gltf": bpy.ops.import_scene.gltf,
     ".fbx": bpy.ops.import_scene.fbx,
+    **dict.fromkeys(USD_SUFFIXES, bpy.ops.wm.usd_import),  # also sets the scene's frame range
 }
 
 
 class Asset:
     values: np.ndarray | None = None  # per-point scalars, coloured through the colormap
+    animated = False  # moves over the scene's frame range
 
     def __init__(self, spec: AssetSpec, parent: bpy.types.Object):
         self.spec = spec
@@ -85,6 +87,7 @@ class Mesh(Asset):
             if obj.parent is None:
                 obj.parent = self.anchor
         self.objects = [obj for obj in imported if obj.type == 'MESH']
+        self.animated = any(is_animated(obj) for obj in imported)
         for obj in self.objects:
             if spec.smooth:
                 obj.data.shade_smooth()
@@ -92,7 +95,8 @@ class Mesh(Asset):
                 obj.data.materials.clear()
                 obj.data.materials.append(matte_material())
         n_verts = sum(len(obj.data.vertices) for obj in self.objects)
-        print(f"[i] {spec.path}: {len(self.objects)} mesh(es), {n_verts} vertices")
+        print(f"[i] {spec.path}: {len(self.objects)} mesh(es), {n_verts} vertices"
+              + (", animated" if self.animated else ""))
 
     def paint(self, cmap: str | None, vmin: float, vmax: float) -> None:
         if self.spec.color != "original":
@@ -116,6 +120,13 @@ def import_file(path: str) -> list[bpy.types.Object]:
         if obj.type in {'CAMERA', 'LIGHT'}:
             bpy.data.objects.remove(obj)
     return [obj for obj in bpy.data.objects if obj not in before]
+
+
+def is_animated(obj: bpy.types.Object) -> bool:
+    """Keyframed, or moved or deformed by a USD or Alembic cache."""
+    return (obj.animation_data is not None
+            or any(c.type == 'TRANSFORM_CACHE' for c in obj.constraints)
+            or any(m.type == 'MESH_SEQUENCE_CACHE' for m in obj.modifiers))
 
 
 def new_point_cloud(name: str, xyz: np.ndarray, radius: float,
