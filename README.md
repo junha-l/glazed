@@ -230,8 +230,9 @@ instead of leaving room for a whole orbit.
 ### Quality
 
 Renders default to `--res 1400 1050 --samples 256 --supersample 2`, rendering at
-twice the resolution and filtering down for clean edges. `--gpu` uses the first of
-OptiX, CUDA, HIP, Metal, or oneAPI it finds, and falls back to the CPU. Preview
+twice the resolution and filtering down for clean edges. `--gpu` renders and
+denoises on the first of OptiX, CUDA, HIP, Metal, or oneAPI it finds, and falls back
+to the CPU. Preview
 views with `--res 480 360 --samples 32 --supersample 1`; for videos,
 `--res 1280 720 --samples 128 --supersample 1` keeps frame times down.
 `--save-blend` also saves the scene as a `.blend` to adjust by hand in Blender.

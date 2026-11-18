@@ -26,6 +26,8 @@ def configure(settings: RenderSettings, bit_depth: int) -> None:
     scene.cycles.use_adaptive_sampling = True
     scene.cycles.use_denoising = True
     scene.cycles.device = 'GPU' if settings.gpu and enable_gpu() else 'CPU'
+    # Blender denoises on the CPU by default, even when rendering on the GPU.
+    scene.cycles.denoising_use_gpu = scene.cycles.device == 'GPU'
 
     scene.render.resolution_x, scene.render.resolution_y = settings.resolution
     scene.render.resolution_percentage = 100 * settings.supersample
