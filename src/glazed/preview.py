@@ -3,7 +3,8 @@
 Orbit and adjust the lighting there, then copy the matching glazed command, or
 render it with Cycles at preview quality when bpy is installed. The server needs
 only numpy (matplotlib, when present, gives exact colormaps), so it runs from a
-research environment too.
+research environment too. USD files also need bpy, whose importer reads them for
+the page.
 """
 
 from __future__ import annotations
@@ -29,8 +30,8 @@ from .io import POINT_CLOUD_SUFFIXES, USD_SUFFIXES, AssetSpec, point_radius
 PAGE = Path(__file__).with_name("preview.html")
 # The options the page controls; everything else keeps its command-line value.
 CONTROLS = ("azim", "elev", "distance", "lens", "key", "ambient", "key_azim", "key_elev",
-            "exposure", "bg", "transparent", "cmap", "vmin", "vmax", "res")
-ANIMATION = ("frames", "fps", "turns", "elev_amp", "dolly")
+            "exposure", "bg", "transparent", "cmap", "vmin", "vmax", "res", "fps")
+ANIMATION = ("frames", "turns", "elev_amp", "dolly")
 QUICK_RENDER = {"samples": 32, "supersample": 1, "mode": ["still"], "colorbar": False,
                 "save_blend": False}
 QUICK_WIDTH = 640
@@ -38,19 +39,19 @@ QUICK_WIDTH = 640
 
 class Preview:
     def __init__(self, specs: list[AssetSpec], args: argparse.Namespace):
-        for spec in specs:
-            if Path(spec.path).suffix.lower() in USD_SUFFIXES:
-                raise ValueError(f"{spec.path}: the preview can't show USD files; render it "
-                                 "instead, e.g. a quick still with --res 480 360 --samples 32")
         self.specs, self.args = specs, args
         self.clouds = {i: np.load(spec.path).astype(np.float32) for i, spec in enumerate(specs)
                        if Path(spec.path).suffix.lower() in POINT_CLOUD_SUFFIXES}
+        self.frames, self.usd = read_usd({i: spec.path for i, spec in enumerate(specs)
+                                          if Path(spec.path).suffix.lower() in USD_SUFFIXES},
+                                         args.every)
         self.scene = {
             "objects": [self.describe(i, spec) for i, spec in enumerate(specs)],
             "options": {key: getattr(args, key) for key in CONTROLS},
             "animation": {key: getattr(args, key) for key in ANIMATION},
             "bgHex": css_color(args.bg),
             "canRender": importlib.util.find_spec("bpy") is not None,
+            "fileFrames": self.frames,
         }
 
     def describe(self, i: int, spec: AssetSpec) -> dict:
@@ -65,6 +66,12 @@ class Preview:
                 raise ValueError(f"{file}: expected an (N, 3|4|6) array, got {data.shape}")
             entry.update(url=f"points/{i}", columns=data.shape[1],
                          radius=point_radius(data[:, :3], spec.radius, spec.radius_scale))
+        elif i in self.usd:
+            usd = self.usd[i]
+            entry.update(url=f"usd/{i}", corners=len(usd.corners), parts=[
+                {"name": part.name, "color": [round(c, 4) for c in part.color],
+                 "triangles": len(part.triangles), "vertices": part.positions.shape[1],
+                 "shapes": len(part.positions)} for part in usd.parts])
         else:
             entry["url"] = f"files/{i}/{quote(file.name)}"
         return entry
@@ -92,6 +99,33 @@ class Preview:
             subprocess.run([sys.executable, "-m", "glazed", *to_argv(values)],
                            check=True, capture_output=True, text=True)
             return Path(tmp, "preview.png").read_bytes()
+
+
+def read_usd(paths: dict[int, str], every: int) -> tuple[list[int], dict]:
+    """The frames a video plays (empty when nothing moves) and each entry's UsdFile."""
+    if not paths:
+        return [], {}
+    try:
+        from .render.usd import load_usd
+    except ImportError as err:
+        raise ValueError(f"{next(iter(paths.values()))}: the preview reads USD files with "
+                         f"Blender's bpy ({err}). Start it from the render environment: "
+                         "pip install 'glazed[render]'") from err
+    frames, files = load_usd(list(paths.values()), every)
+    if frames:
+        print(f"[i] animated: frames {frames[0]}-{frames[-1]}, {len(frames)} of them at every "
+              f"{every}", flush=True)
+    return frames, dict(zip(paths, files))
+
+
+def usd_bytes(usd) -> bytes:
+    """A UsdFile as the page reads it, in order: for each part its triangles (uint32),
+    its vertices for each shape, and its matrix for each frame (column-major, as three.js
+    wants), then the bounding box corners (float32)."""
+    blocks = [array for part in usd.parts
+              for array in (part.triangles, part.positions, part.matrices.transpose(0, 2, 1))]
+    blocks.append(usd.corners.astype(np.float32))
+    return b"".join(np.ascontiguousarray(block).tobytes() for block in blocks)
 
 
 def css_color(spec: str) -> str:
@@ -123,6 +157,8 @@ def make_handler(preview: Preview) -> type[BaseHTTPRequestHandler]:
                     self.send(json.dumps(preview.scene).encode(), "application/json")
                 elif route == "points":
                     self.send(preview.clouds[int(rest)].tobytes(), "application/octet-stream")
+                elif route == "usd":
+                    self.send(usd_bytes(preview.usd[int(rest)]), "application/octet-stream")
                 elif route == "files" and (file := preview.file(*parse_file(rest))):
                     kind = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
                     self.send(file.read_bytes(), kind)
