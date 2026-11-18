@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import bpy
@@ -10,7 +11,8 @@ import bpy
 from ..io import AssetSpec
 from ..settings import MODES, Animation, Colormap, Lighting, RenderSettings, View
 from . import color
-from .camera import Pose, fit_distance, new_camera, orbit_poses, waypoint_poses
+from .camera import (Pose, best_azim, fit_distance, fit_view, new_camera, orbit_poses,
+                     waypoint_poses)
 from .output import Shot, configure, encode_gif, encode_mp4
 from .scene import Scene, build_scene
 from .studio import build_studio
@@ -30,14 +32,16 @@ def render(specs: list[AssetSpec], out: str = "outs/render", modes=("still",),
     view, animation, colormap = view or View(), animation or Animation(), colormap or Colormap()
     video = not VIDEO_MODES.isdisjoint(modes)
 
-    scene = build_scene(specs)
+    scene = build_scene(specs, animation.every)
+    # An animated file sets the video's length, one frame per rendered frame of the file.
+    frames = scene.frames if video else scene.frames[:1]
+    poses = camera_poses(scene, view, animation,
+                         len(frames) or (animation.frames if video else 1), settings.resolution)
     light_rig = build_studio(scene.floor_z, lighting)
     camera = new_camera(view.lens)
     configure(settings, bit_depth=8 if video else 16)
     background = None if settings.background is None else color.parse_color(settings.background)
-    poses = camera_poses(scene, view, animation, animation.frames if video else 1,
-                         settings.resolution)
-    shot = Shot(camera, light_rig, poses, settings.supersample, background)
+    shot = Shot(camera, light_rig, poses, frames, settings.supersample, background)
 
     out = Path(out)
     if out.suffix.lower() in OUTPUT_SUFFIXES:
@@ -76,4 +80,10 @@ def camera_poses(scene: Scene, view: View, animation: Animation, frames: int,
     if distance is None:
         distance = fit_distance(scene.points, scene.focus, view.lens, resolution)
         print(f"[i] camera distance {distance:.2f}")
+    if view.best:
+        view = replace(view, azim=best_azim(scene, view, distance))
+        if view.distance is None:  # fit the path the camera takes, not a whole orbit
+            distance = fit_view(scene.points, orbit_poses(view, animation, frames, 1.0,
+                                                          scene.focus), view.lens, resolution)
+        print(f"[i] best view: azimuth {view.azim:g}, distance {distance:.2f}")
     return orbit_poses(view, animation, frames, distance, scene.focus)

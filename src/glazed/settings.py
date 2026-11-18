@@ -32,11 +32,13 @@ class View:
     distance: float | None = None  # multiple of the scene's half-size; None fits it in frame
     lens: float = 50.0  # mm; shorter = stronger perspective
     waypoints: str | None = None  # JSON camera path that replaces the orbit
+    best: bool = False  # replace azim with the one that hides the least surface
 
 
 @dataclass
 class Animation:
-    frames: int = 120
+    frames: int = 120  # an animated file sets its own: one per rendered frame of the file
+    every: int = 1  # animated files: render every Nth frame
     fps: int = 30
     turns: float = 1.0
     elev_amp: float = 0.0  # degrees of up-down sway

@@ -40,3 +40,9 @@ def write_colors(obj: bpy.types.Object, rgba) -> None:
     rgba = np.broadcast_to(np.asarray(rgba, dtype=np.float32), (len(attribute.data), 4))
     attribute.data.foreach_set("color", rgba.ravel())
     obj.data.update_tag()
+
+
+def world_corners(obj: bpy.types.Object) -> np.ndarray:
+    """(8, 3) world positions of an object's bounding box corners."""
+    matrix = np.array(obj.matrix_world)
+    return np.array(obj.bound_box) @ matrix[:3, :3].T + matrix[:3, 3]

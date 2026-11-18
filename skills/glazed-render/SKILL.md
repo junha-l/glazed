@@ -136,7 +136,7 @@ location = [0.3, 0, 0]    # file units
 
 | Key | Default | Meaning |
 |---|---|---|
-| `path` | required | `.npy` point cloud, or a `.ply .stl .obj .glb .gltf .fbx` mesh |
+| `path` | required | `.npy` point cloud, or a `.ply .stl .obj .glb .gltf .fbx` or USD (`.usd .usda .usdc .usdz`) mesh |
 | `color` | `"#cccccc"` | Any matplotlib color. Ignored for (N, 4) and (N, 6) clouds. `"original"` keeps a mesh's own materials |
 | `location` | `[0, 0, 0]` | Offset, in file units |
 | `rotation` | `[0, 0, 0]` | Degrees about x, y, z, pivoting on the file's origin |
@@ -173,6 +173,12 @@ relative to the working directory, so every `scene.toml` would land on the same
   dark slides.
 - **Video.** `--mode mp4 --res 1280 720 --supersample 1 --samples 128` renders a
   turntable.
+- **Animated USD** (a simulation replay, for example) plays in video modes, one
+  video frame per file frame. `--every 2` renders every 2nd frame, `--turns 0` keeps
+  the camera still, and `--color original` keeps the file's materials. The preview
+  can't show USD files.
+- **Best view.** `--best-view` picks the azimuth that hides the least of the scene
+  and, without `--distance`, frames it closely. Look at the result anyway.
 - `glazed --help` lists every option.
 
 Look at the rendered PNG before reporting back. If parts float apart, are rotated

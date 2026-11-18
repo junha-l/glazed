@@ -23,7 +23,8 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib
 
 POINT_CLOUD_SUFFIXES = (".npy",)
-MESH_SUFFIXES = (".obj", ".ply", ".stl", ".glb", ".gltf", ".fbx")
+USD_SUFFIXES = (".usd", ".usda", ".usdc", ".usdz")  # may be animated; videos play the animation
+MESH_SUFFIXES = (".obj", ".ply", ".stl", ".glb", ".gltf", ".fbx") + USD_SUFFIXES
 SCENE_SUFFIXES = (".toml", ".json")
 RADIUS_PER_SPACING = 1.2  # closes most gaps in randomly sampled clouds without merging points
 
