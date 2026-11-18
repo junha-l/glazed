@@ -134,7 +134,8 @@ preview and rendered by Cycles.
 
 The preview needs only numpy, so it runs in a research environment too. There,
 the Cycles button is off, since it needs bpy, and colormaps other than viridis
-need matplotlib. On a remote machine, pick a port and forward it:
+need matplotlib. USD files need bpy as well: the preview reads them with Blender's
+importer, as a render does. On a remote machine, pick a port and forward it:
 `glazed scene.toml --preview --port 8765`, then `ssh -L 8765:localhost:8765 <host>`
 and open `http://localhost:8765`. The page loads three.js from a CDN, so the
 browser needs internet access. Soft floor shadows are approximate, mostly where
@@ -207,7 +208,10 @@ A USD file with animation, such as a simulation replay, plays in video modes: on
 video frame per frame of the file, so the file sets the length instead of
 `--frames`. `--every 2` renders every 2nd frame. A 60 fps file then plays in real
 time at the default `--fps 30`. The floor and framing cover the whole animation.
-A still renders the first frame. The preview can't show USD files.
+A still renders the first frame. In the preview, **Play** (or the space bar) plays
+the animation while you orbit, and **Play turntable** plays it along the camera's
+path, as the video will. Both play at the speed slider's frames per second, which
+sets `--fps`.
 
 ```bash
 glazed replay.usd --mode mp4 --every 2 --turns 0 --best-view --color original \

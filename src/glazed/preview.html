@@ -39,7 +39,7 @@
     text-transform: uppercase; color: var(--muted);
   }
   .row { display: grid; grid-template-columns: 88px 1fr 64px; gap: 8px; align-items: center; margin: 3px 0; }
-  .row > :only-of-type:not(span), .row > .wide { grid-column: 2 / 4; }
+  .row > :only-of-type:not(span, button), .row > .wide { grid-column: 2 / 4; }
   .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
   input[type=number], input:not([type]) {
     width: 100%; padding: 2px 4px; font: inherit; color: inherit;
@@ -54,6 +54,7 @@
   }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .row:has(:disabled) > span { opacity: 0.45; }
   pre {
     margin: 0 0 8px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere;
     font: 12px/1.4 ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-radius: 6px;
@@ -100,6 +101,13 @@
     </datalist>
   </section>
 
+  <section id="animation">
+    <h2>Animation</h2>
+    <div class="row" title="A video plays every frame; a still renders the first">
+      <button id="animate">Play</button><input type="range" id="frame" min="0" step="1"><input type="number" id="frame-number">
+    </div>
+  </section>
+
   <h2>Image</h2>
   <label class="row"><span>width, height</span><input type="number" id="width" min="16"><input type="number" id="height" min="16"></label>
   <div class="buttons">
@@ -139,6 +147,7 @@ const SLIDERS = {
   lighting: [["exposure", "exposure", -3, 3, 0.1], ["key", "key", 0, 3, 0.05],
              ["ambient", "ambient", 0, 3, 0.05], ["key_azim", "key azimuth", -180, 180, 1],
              ["key_elev", "key elevation", 0, 90, 1]],
+  animation: [["fps", "speed, fps", 1, 120, 1]],  // the video's --fps; previews play at it
 };
 const Z = new THREE.Vector3(0, 0, 1);
 
@@ -150,6 +159,7 @@ const post = (route) => fetch(route, { method: "POST", body: JSON.stringify(opts
 
 const setup = await (await fetch("scene.json")).json();
 const opts = setup.options;  // named like the command-line options, e.g. key_azim for --key-azim
+const fileFrames = setup.fileFrames;  // an animated file's frames that a video plays, or none
 let background = new THREE.Color(setup.bgHex);
 
 const canvas = $("canvas");
@@ -236,7 +246,7 @@ try {
     anchor.position.fromArray(o.location);
     anchor.rotation.set(...o.rotation.map(rad), "ZYX");  // Blender's XYZ Euler
     anchor.scale.setScalar(o.scale);
-    const asset = o.columns ? await pointCloud(o) : await meshFile(o);
+    const asset = o.columns ? await pointCloud(o) : o.parts ? await usdFile(o) : await meshFile(o);
     anchor.add(asset.object);
     root.add(anchor);
     assets.push(asset);
@@ -351,6 +361,55 @@ async function meshFile(o) {
   };
 }
 
+async function usdFile(o) {  // read by Blender's importer on the server: render/usd.py
+  const data = await (await fetch(o.url)).arrayBuffer();
+  let offset = 0;
+  const take = (Type, length) => {  // the blocks in preview.usd_bytes' order
+    const array = new Type(data, offset, length);
+    offset += length * 4;
+    return array;
+  };
+  const object = new THREE.Group();
+  const parts = o.parts.map((p) => {
+    const index = take(Uint32Array, p.triangles * 3);
+    const shapes = take(Float32Array, p.shapes * p.vertices * 3);
+    const matrices = take(Float32Array, Math.max(fileFrames.length, 1) * 16);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    geometry.setAttribute("position", new THREE.BufferAttribute(shapes.slice(0, p.vertices * 3), 3));
+    if (o.smooth) geometry.computeVertexNormals();
+    const color = o.color === "original"
+      ? new THREE.Color().setRGB(...p.color, THREE.LinearSRGBColorSpace) : o.color;
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({
+      color, side: THREE.DoubleSide, flatShading: !o.smooth }));
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;  // each frame's matrix comes from the file
+    mesh.frustumCulled = p.shapes === 1;  // a deforming mesh outgrows its first bounds
+    object.add(mesh);
+    return { mesh, shapes, matrices, size: p.vertices * 3 };
+  });
+  const corners = take(Float32Array, o.corners * 3);
+
+  function setFrame(i) {
+    for (const { mesh, shapes, matrices, size } of parts) {
+      mesh.matrix.fromArray(matrices, i * 16);
+      mesh.matrixWorldNeedsUpdate = true;
+      if (shapes.length > size) {
+        const position = mesh.geometry.attributes.position;
+        position.array.set(shapes.subarray(i * size, (i + 1) * size));
+        position.needsUpdate = true;
+        if (o.smooth) mesh.geometry.computeVertexNormals();
+      }
+    }
+  }
+  setFrame(0);
+  return {
+    object, values: null, paint() {}, setFrame,
+    sources: [...parts.map(({ mesh }) => ({ positions: mesh.geometry.attributes.position, object: mesh })),
+              { positions: new THREE.BufferAttribute(corners, 3), object }],  // where it moves later
+  };
+}
+
 function smoothed(geometry) {
   if (!geometry.index) {
     geometry.deleteAttribute("normal");
@@ -448,7 +507,17 @@ function placeLights() {
   renderer.setClearColor(background, opts.transparent ? 0 : 1);
 }
 
-let queued = false, playing = null;
+// Playback clocks count video frames at the speed slider's fps, so a change of speed
+// carries on from where the playback is.
+let queued = false;
+let playing = null;  // the turntable's clock
+let animating = null;  // the clock of the file's animation alone, which starts at frame `from`
+const newClock = (from = 0) => ({ from, frames: 0, last: performance.now() });
+function tick(clock, now) {  // video frames since the clock started
+  const elapsed = Math.max(0, now - clock.last);  // a frame's timestamp can predate the click
+  clock.last += elapsed;
+  return (clock.frames += (elapsed / 1000) * opts.fps);
+}
 function requestRender() {
   if (!queued) {
     queued = true;
@@ -458,11 +527,16 @@ function requestRender() {
 function frame(now) {
   queued = false;
   if (playing !== null) {  // camera.orbit_poses at the video's speed
-    const t = (((now - playing) / 1000) * setup.animation.fps / setup.animation.frames) % 1;
+    const length = fileFrames.length || setup.animation.frames;  // pipeline.render's frame count
+    const t = (tick(playing, now) / length) % 1;
+    if (fileFrames.length) showFrame(Math.floor(t * length));
     const { turns, elev_amp, dolly } = setup.animation;
     camera.position.copy(focus).add(spherical(distance() * (1 - dolly * t), opts.azim + 360 * turns * t,
                                               opts.elev + elev_amp * Math.sin(2 * Math.PI * t)));
     camera.lookAt(focus);
+    requestRender();
+  } else if (animating !== null) {  // a video's pace, one file frame per video frame; loops
+    showFrame((animating.from + Math.floor(tick(animating, now))) % fileFrames.length);
     requestRender();
   }
   placeLights();
@@ -568,13 +642,68 @@ for (const [i, name] of ["width", "height"].entries()) {
   };
 }
 
-$("#play").onclick = () => {
-  playing = playing === null ? performance.now() : null;
-  controls.enabled = playing === null;
-  $("#play").textContent = playing === null ? "Play turntable" : "Stop";
-  if (playing === null) placeCamera();
-  else requestRender();
+let frameIndex = 0;
+function showFrame(i) {
+  if (i === frameIndex) return;
+  frameIndex = i;
+  assets.forEach((asset) => asset.setFrame?.(i));
+  $("#frame").value = i;
+  if (document.activeElement !== $("#frame-number")) $("#frame-number").value = fileFrames[i];
+  requestRender();
+}
+const animated = fileFrames.length > 1;
+if (!animated) {
+  $("#animation").querySelectorAll("button, input").forEach((control) => { control.disabled = true; });
+  $("#animation").title = "Nothing in this scene is animated";
+}
+$("#frame").max = Math.max(fileFrames.length - 1, 0);
+$("#frame").value = 0;
+$("#frame-number").value = fileFrames[0] ?? "";
+$("#frame").oninput = (e) => {
+  animate(false);
+  showFrame(+e.target.value);
 };
+$("#frame-number").onchange = (e) => {  // the nearest frame a video plays
+  animate(false);
+  const distances = fileFrames.map((frame) => Math.abs(frame - e.target.value));
+  showFrame(distances.indexOf(Math.min(...distances)));
+  e.target.value = fileFrames[frameIndex];
+};
+
+function animate(on) {  // the animation alone, from the current frame; the camera stays free
+  if (on && playing !== null) turntable(false);
+  animating = on ? newClock(frameIndex) : null;
+  $("#animate").textContent = on ? "Pause" : "Play";
+  requestRender();
+}
+$("#animate").onclick = () => animate(animating === null);
+if (animated) $("#animate").title = "Play or pause (space)";
+
+function turntable(on) {  // the video: camera path and animation together, from the start
+  if (on) animate(false);
+  playing = on ? newClock() : null;
+  controls.enabled = !on;
+  $("#play").textContent = on ? "Stop" : "Play turntable";
+  if (on) requestRender();
+  else placeCamera();
+}
+$("#play").onclick = () => turntable(playing === null);
+
+// Space pauses whatever plays, or plays the animation, except while typing in a field.
+let spaceTaken = false;
+const typing = (e) => e.target.matches?.("input[type=number], input:not([type])");
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || typing(e) || (playing === null && !animated)) return;
+  e.preventDefault();  // no scrolling
+  spaceTaken = true;
+  if (e.repeat) return;
+  if (playing !== null) turntable(false);
+  else animate(animating === null);
+});
+document.addEventListener("keyup", (e) => {  // a focused button would click on this keyup
+  if (e.code === "Space" && spaceTaken) e.preventDefault();
+  spaceTaken = false;
+});
 
 $("#render").disabled = !setup.canRender;
 if (!setup.canRender) {
@@ -588,7 +717,8 @@ $("#render").onclick = async () => {
   if (response.ok) {
     $("#cycles").src = URL.createObjectURL(await response.blob());
     $("#cycles").hidden = false;
-    status("Cycles render at preview quality. Click it to return to the live view.");
+    status(`Cycles render at preview quality${frameIndex ? ", of the first frame, as a still renders it" : ""}. `
+           + "Click it to return to the live view.");
   } else {
     status(`render failed:\n${await response.text()}`);
   }
