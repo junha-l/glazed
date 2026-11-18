@@ -32,6 +32,7 @@ class View:
     distance: float | None = None  # multiple of the scene's half-size; None fits it in frame
     lens: float = 50.0  # mm; shorter = stronger perspective
     waypoints: str | None = None  # JSON camera path that replaces the orbit
+    best: bool = False  # replace azim with the one that hides the least surface
 
 
 @dataclass

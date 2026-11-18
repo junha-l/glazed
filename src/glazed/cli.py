@@ -46,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     g = p.add_argument_group("camera")
     g.add_argument("--azim", type=float, default=View.azim, help="degrees")
+    g.add_argument("--best-view", action="store_true",
+                   help="replace --azim with the azimuth that hides the least of the scene, "
+                        "e.g. fingers behind the object they hold; ties go to --azim")
     g.add_argument("--elev", type=float, default=View.elev, help="degrees")
     g.add_argument("--distance", type=float,
                    help="multiple of the scene's half-size (default: fit the scene in frame)")
@@ -153,7 +156,7 @@ def main(argv=None) -> None:
         lighting=Lighting(key=args.key, ambient=args.ambient, key_azim=args.key_azim,
                           key_elev=args.key_elev),
         view=View(azim=args.azim, elev=args.elev, distance=args.distance, lens=args.lens,
-                  waypoints=args.waypoints),
+                  waypoints=args.waypoints, best=args.best_view),
         animation=Animation(frames=args.frames, every=args.every, fps=args.fps, turns=args.turns,
                             elev_amp=args.elev_amp, dolly=args.dolly, ease=args.ease,
                             gif_width=args.gif_width, keep_frames=args.keep_frames),

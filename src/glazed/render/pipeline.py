@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import bpy
@@ -10,7 +11,8 @@ import bpy
 from ..io import AssetSpec
 from ..settings import MODES, Animation, Colormap, Lighting, RenderSettings, View
 from . import color
-from .camera import Pose, fit_distance, new_camera, orbit_poses, waypoint_poses
+from .camera import (Pose, best_azim, fit_distance, fit_view, new_camera, orbit_poses,
+                     waypoint_poses)
 from .output import Shot, configure, encode_gif, encode_mp4
 from .scene import Scene, build_scene
 from .studio import build_studio
@@ -78,4 +80,10 @@ def camera_poses(scene: Scene, view: View, animation: Animation, frames: int,
     if distance is None:
         distance = fit_distance(scene.points, scene.focus, view.lens, resolution)
         print(f"[i] camera distance {distance:.2f}")
+    if view.best:
+        view = replace(view, azim=best_azim(scene, view, distance))
+        if view.distance is None:  # fit the path the camera takes, not a whole orbit
+            distance = fit_view(scene.points, orbit_poses(view, animation, frames, 1.0,
+                                                          scene.focus), view.lens, resolution)
+        print(f"[i] best view: azimuth {view.azim:g}, distance {distance:.2f}")
     return orbit_poses(view, animation, frames, distance, scene.focus)

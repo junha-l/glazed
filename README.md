@@ -210,12 +210,22 @@ time at the default `--fps 30`. The floor and framing cover the whole animation.
 A still renders the first frame. The preview can't show USD files.
 
 ```bash
-glazed replay.usd --mode mp4 --every 2 --turns 0 --color original \
+glazed replay.usd --mode mp4 --every 2 --turns 0 --best-view --color original \
     --res 1280 720 --samples 128 --supersample 1 --gpu
 ```
 
 `--turns 0` keeps the camera still. `--color original` keeps the file's own
-materials.
+materials. `--best-view` picks the view, as below.
+
+### Best view
+
+`--best-view` replaces `--azim` with the azimuth, in 15 degree steps, that hides
+the least of the scene, such as fingers behind the object they hold. Each part (each
+mesh in a file, each point cloud) counts equally: the score is the share of points
+on it that the camera can see, averaged over the parts and, for an animation, over
+a few frames. Ties go to the angle nearest `--azim`, and `--elev` is kept. Without
+`--distance`, it also frames the scene as closely as the camera's path allows,
+instead of leaving room for a whole orbit.
 
 ### Quality
 

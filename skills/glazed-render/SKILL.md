@@ -177,6 +177,8 @@ relative to the working directory, so every `scene.toml` would land on the same
   video frame per file frame. `--every 2` renders every 2nd frame, `--turns 0` keeps
   the camera still, and `--color original` keeps the file's materials. The preview
   can't show USD files.
+- **Best view.** `--best-view` picks the azimuth that hides the least of the scene
+  and, without `--distance`, frames it closely. Look at the result anyway.
 - `glazed --help` lists every option.
 
 Look at the rendered PNG before reporting back. If parts float apart, are rotated
