@@ -123,8 +123,8 @@ orbit, scroll to zoom, and adjust the view, lighting, backdrop, colormap, and im
 size in the panel; drag a setting's name to change it, and double-click the name
 to reset it. The bar under the image shows the matching `glazed` command to copy,
 including the other options you passed. **Render** (or R) renders the current view
-with Cycles at preview quality to check the real look; **Split** then compares it
-with the live preview side by side. **Turntable** plays a video's orbit at its
+with Cycles to check the real look, at the size it's shown and with 16 samples, so it
+takes seconds; **Split** then compares it with the live preview side by side. **Turntable** plays a video's orbit at its
 real speed.
 
 | Live preview | Cycles render of the copied command |

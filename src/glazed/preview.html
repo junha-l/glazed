@@ -1490,7 +1490,10 @@ async function renderCycles() {
   const timer = setInterval(() => { label.textContent = `Rendering ${seconds()}s`; }, 1000);
   const options = JSON.stringify(opts);
   try {
-    const response = await post("render");
+    // as many pixels as the frame shows, so the render is as sharp as the live view
+    const shown = Math.round($("#frame").getBoundingClientRect().width * window.devicePixelRatio);
+    const response = await fetch("render", { method: "POST",
+                                             body: JSON.stringify({ ...opts, shown_width: shown }) });
     if (!response.ok) throw new Error(await response.text());
     const image = $("#cycles");
     if (image.src.startsWith("blob:")) URL.revokeObjectURL(image.src);

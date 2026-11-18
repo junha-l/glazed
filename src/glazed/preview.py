@@ -32,9 +32,11 @@ PAGE = Path(__file__).with_name("preview.html")
 CONTROLS = ("azim", "elev", "distance", "lens", "key", "ambient", "key_azim", "key_elev",
             "exposure", "bg", "transparent", "cmap", "vmin", "vmax", "res", "fps")
 ANIMATION = ("frames", "turns", "elev_amp", "dolly")
-QUICK_RENDER = {"samples": 32, "supersample": 1, "mode": ["still"], "colorbar": False,
+# Cycles stills for the page: few samples and no supersampling, so they take seconds.
+QUICK_RENDER = {"samples": 16, "supersample": 1, "mode": ["still"], "colorbar": False,
                 "save_blend": False}
-QUICK_WIDTH = 640
+QUICK_WIDTH = 640  # when the page doesn't say how wide it shows the render
+MIN_QUICK_WIDTH = 160
 
 
 class Preview:
@@ -90,11 +92,13 @@ class Preview:
         return shlex.join(["glazed", *to_argv(self.values(options))])
 
     def render(self, options: dict) -> bytes:
-        """A Cycles still at preview quality, in a fresh process so bpy starts clean."""
+        """A Cycles still at preview quality, as many pixels wide as the page shows it (at
+        most the output's width), in a fresh process so bpy starts clean."""
         values = self.values(options)
         width, height = values["res"]
+        shown = min(width, max(MIN_QUICK_WIDTH, int(options.get("shown_width") or QUICK_WIDTH)))
         with tempfile.TemporaryDirectory() as tmp:
-            values.update(QUICK_RENDER, res=[QUICK_WIDTH, round(QUICK_WIDTH * height / width)],
+            values.update(QUICK_RENDER, res=[shown, round(shown * height / width)],
                           cmap=values["cmap"][:1], out=str(Path(tmp, "preview")))
             subprocess.run([sys.executable, "-m", "glazed", *to_argv(values)],
                            check=True, capture_output=True, text=True)
